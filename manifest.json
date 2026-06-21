@@ -1,0 +1,10 @@
+{
+    "name": "BiliPlayer",
+    "display_name": "🐾 BiliPlayer 🐾",
+    "version": "1.2.0",
+    "description": "在酒馆里内置一个带分类收藏夹、10 套主题、自定义头像与边框图片的萌系B站播放器",
+    "author": "未初",
+    "js": "index.js",
+    "css": "style.css",
+    "requires": []
+}
