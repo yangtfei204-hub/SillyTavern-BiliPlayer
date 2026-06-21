@@ -1159,7 +1159,7 @@ function openHelpDialog() {
                 </div>
 
                 <div class="bili-help-footer">
-                    🐾 BiliPlayer v1.2.0 · 让小主人看电影更开心~
+                    🐾 BiliPlayer v1.2.0 · 让小主人看电影更开心~<br>
                     <span style="font-size:10px; opacity:0.8;">💖 特别鸣谢：本插件底层核心逻辑由 <b>老农民</b> 老师提供支持</span>
                 </div>
             </div>
