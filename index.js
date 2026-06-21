@@ -1,3 +1,11 @@
+/**
+ * 🐾 BiliPlayer Extension for SillyTavern
+ * 
+ * Author: 未初
+ * 💖 Special Thanks: 本插件的底层基础逻辑与核心机制由【老农民】老师提供支持，特此致谢！
+ */
+
+
 // 1. 全局配置与状态
 const MODULE_NAME = 'bili_player_ext';
 let panelElement = null;
@@ -1152,6 +1160,7 @@ function openHelpDialog() {
 
                 <div class="bili-help-footer">
                     🐾 BiliPlayer v1.2.0 · 让小主人看电影更开心~
+                    <span style="font-size:10px; opacity:0.8;">💖 特别鸣谢：本插件底层核心逻辑由 <b>老农民</b> 老师提供支持</span>
                 </div>
             </div>
         </div>
