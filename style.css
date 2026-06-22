@@ -1677,3 +1677,45 @@
 .bili-ext-video-box {
     background-color: #111111 !important;
 }
+
+/* ========== 悬浮球自定义外框 ========== */
+.bili-badge-border-wrapper {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.bili-badge-custom-border {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+/* 头像层级提升，显示在外框上方 */
+.bili-badge-circle {
+    z-index: 2;
+    position: relative;
+}
+
+/* ========== 悬浮球外框+头像实时预览 ========== */
+.bili-badge-preview-wrapper {
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    background: var(--kp-bg-soft);
+    border-radius: 10px;
+    margin-top: 8px;
+}
+
+.bili-badge-preview-container {
+    min-height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--kp-bg);
+    border: 1.5px dashed var(--kp-primary-light);
+    border-radius: 8px;
+    padding: 8px;
+}

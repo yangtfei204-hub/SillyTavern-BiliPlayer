@@ -36,8 +36,18 @@ const DEFAULT_SETTINGS = {
     borderImageMode: 'background',
     borderImageFit: 'cover',
     borderImageOpacity: 1,
-    customColors: null
+    customColors: null,
+    startAsFloating: true,
+    badgeBorderImage: '',      
+    hideBadgeBorder: false,        // ⭐ 加上逗号
+    badgeBorderZIndex: 'above',    
+    badgeBorderScale: 100,          
+    badgeBorderOffsetX: 0,          
+    badgeBorderOffsetY: 0           
 };
+
+
+
 
 const BADGE_DIMENSIONS = {
     large:  { w: 72, h: 76 },
@@ -1007,6 +1017,7 @@ function createFloatBadge(customLeft = null, customTop = null) {
 
     floatBadgeElement.innerHTML = `
         <div class="bili-badge-container">
+            <div class="bili-badge-border-wrapper"></div>
             <div class="bili-badge-ear left"></div>
             <div class="bili-badge-ear right"></div>
             <div class="bili-badge-circle">
@@ -1018,6 +1029,7 @@ function createFloatBadge(customLeft = null, customTop = null) {
     document.body.appendChild(floatBadgeElement);
 
     updateBadgeAvatar();
+    applyBadgeBorder();  // 新增：应用外框图片
 
     let downX = 0, downY = 0, downTime = 0;
     const TAP_THRESHOLD = 10;
@@ -1060,6 +1072,70 @@ function createFloatBadge(customLeft = null, customTop = null) {
 
     initDragSystem(floatBadgeElement, floatBadgeElement, true);
 }
+
+function applyBadgeBorder() {
+    if (!floatBadgeElement) return;
+    
+    const wrapper = floatBadgeElement.querySelector('.bili-badge-border-wrapper');
+    const ears = floatBadgeElement.querySelectorAll('.bili-badge-ear');
+    const circle = floatBadgeElement.querySelector('.bili-badge-circle');
+    
+    if (!wrapper) return;
+    
+    // 清空旧内容
+    wrapper.innerHTML = '';
+    
+    // 如果勾选了"隐藏外框"
+    if (state.settings.hideBadgeBorder) {
+        ears.forEach(ear => ear.style.display = 'none');
+        if (circle) circle.style.border = 'none';
+        wrapper.style.display = 'none';
+        return;
+    }
+    
+    wrapper.style.display = '';
+    
+    // 显示默认猫耳
+    ears.forEach(ear => ear.style.display = '');
+    if (circle) circle.style.border = '';
+    
+    // 如果有自定义外框图片
+    if (state.settings.badgeBorderImage) {
+        const img = document.createElement('img');
+        img.className = 'bili-badge-custom-border';
+        img.src = state.settings.badgeBorderImage;
+        img.alt = 'border';
+        
+        // ⭐ 应用缩放
+        const scale = (state.settings.badgeBorderScale || 100) / 100;
+        const offsetX = state.settings.badgeBorderOffsetX || 0;
+        const offsetY = state.settings.badgeBorderOffsetY || 0;
+        
+        img.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+        
+        img.onerror = () => {
+            img.remove();
+            console.warn('[BiliPlayer] 悬浮球外框图片加载失败');
+        };
+        wrapper.appendChild(img);
+        
+        // ⭐ 层级控制
+        const zIndex = state.settings.badgeBorderZIndex || 'above';
+        if (zIndex === 'above') {
+            wrapper.style.zIndex = '3';  // 外框在前
+            if (circle) circle.style.zIndex = '2';
+        } else {
+            wrapper.style.zIndex = '1';  // 外框在后
+            if (circle) circle.style.zIndex = '2';
+        }
+        
+        // 隐藏默认猫耳和圆圈边框
+        ears.forEach(ear => ear.style.display = 'none');
+        if (circle) circle.style.border = 'none';
+    }
+}
+
+
 
 // ⭐ 新增：使用说明弹窗
 function openHelpDialog() {
@@ -1215,26 +1291,26 @@ function openSettingsDialog() {
                     </div>
                 </div>
 
-                <!-- ⭐ 悬浮窗边框图片 -->
+                <!-- ⭐ 悬浮窗背景替换（改名） -->
                 <div class="bili-settings-section">
-                    <div class="bili-settings-label">🖼️ 悬浮窗边框图片（支持动图 GIF/WebP）</div>
+                    <div class="bili-settings-label">🖼️ 悬浮窗背景替换（支持动图 GIF/WebP）</div>
                     <div class="bili-border-image-controls">
                         <div class="bili-border-image-upload-wrap">
                             <input type="file" id="bili-border-image-upload" accept="image/*" style="display:none;">
                             <button id="bili-border-image-upload-btn" type="button" class="bili-action-btn-sm bili-action-btn-primary">
-                                ${state.settings.borderImage ? '✓ 已设置（点击更换）' : '📁 选择图片'}
+                                ${state.settings.borderImage ? '✓ 已设置（点击更换）' : '📁 选择背景图片'}
                             </button>
                             ${state.settings.borderImage ? `<button id="bili-border-image-clear-btn" type="button" class="bili-action-btn-sm bili-action-btn-warn">移除</button>` : ''}
                         </div>
 
                         <div class="bili-border-image-mode-wrap">
-                            <label class="bili-settings-sub-label">边框模式：</label>
+                            <label class="bili-settings-sub-label">背景模式：</label>
                             <select id="bili-border-image-mode" class="bili-settings-select">
                                 <option value="background" ${state.settings.borderImageMode === 'background' ? 'selected' : ''}>
-                                    🖼️ 作为背景（保留猫耳边框）
+                                    🖼️ 作为背景（保留原边框）
                                 </option>
                                 <option value="replace" ${state.settings.borderImageMode === 'replace' ? 'selected' : ''}>
-                                    🎀 替换原边框（图片包边）
+                                    🎀 替换边框（图片包边）
                                 </option>
                             </select>
                         </div>
@@ -1255,10 +1331,10 @@ function openSettingsDialog() {
                         </div>
 
                         <div class="bili-border-image-preview" id="bili-border-image-preview">
-                            ${state.settings.borderImage ? `<img src="${state.settings.borderImage}" alt="边框预览">` : '<span style="color:var(--kp-text-muted);font-size:11px;">未设置边框图片</span>'}
+                            ${state.settings.borderImage ? `<img src="${state.settings.borderImage}" alt="背景预览">` : '<span style="color:var(--kp-text-muted);font-size:11px;">未设置背景图片</span>'}
                         </div>
 
-                        <div class="bili-border-image-tip">💡 提示：「替换原边框」建议上传四周有图案、中心透明的 PNG；「作为背景」可上传任意纹理或动图</div>
+                        <div class="bili-border-image-tip">💡 提示：「替换边框」建议上传四周有图案、中心透明的 PNG；「作为背景」可上传任意纹理或动图</div>
                     </div>
                 </div>
 
@@ -1316,9 +1392,71 @@ function openSettingsDialog() {
                     </div>
                 </div>
 
+                <!-- ⭐⭐⭐ 悬浮球外框（升级版，支持动图） -->
+                <div class="bili-settings-section">
+                    <div class="bili-settings-label">🎀 悬浮球外框（猫耳边框装饰）</div>
+                    <div class="bili-border-image-controls">
+                        <div class="bili-border-image-upload-wrap">
+                            <input type="file" id="bili-badge-border-upload" accept="image/*" style="display:none;">
+                            <button id="bili-badge-border-upload-btn" type="button" class="bili-action-btn-sm bili-action-btn-primary">
+                                ${state.settings.badgeBorderImage ? '✓ 已设置（点击更换）' : '📁 选择外框图片'}
+                            </button>
+                            ${state.settings.badgeBorderImage ? `<button id="bili-badge-border-clear-btn" type="button" class="bili-action-btn-sm bili-action-btn-warn">移除</button>` : ''}
+                        </div>
+
+                        <div class="bili-border-image-mode-wrap">
+                            <label class="bili-settings-sub-label" style="display:flex;align-items:center;gap:6px;">
+                                <input type="checkbox" id="bili-badge-border-hide" ${state.settings.hideBadgeBorder ? 'checked' : ''}>
+                                <span>隐藏外框（仅显示头像，方便测试新外框）</span>
+                            </label>
+                        </div>
+
+                        <!-- ⭐ 新增：层级控制 -->
+                        <div class="bili-border-image-mode-wrap">
+                            <label class="bili-settings-sub-label">外框层级：</label>
+                            <select id="bili-badge-border-zindex" class="bili-settings-select">
+                                <option value="above" ${(state.settings.badgeBorderZIndex || 'above') === 'above' ? 'selected' : ''}>
+                                    🎀 外框在前（盖住头像）
+                                </option>
+                                <option value="below" ${state.settings.badgeBorderZIndex === 'below' ? 'selected' : ''}>
+                                    🖼️ 外框在后（头像在前）
+                                </option>
+                            </select>
+                        </div>
+
+                        <!-- ⭐ 新增：缩放控制 -->
+                        <div class="bili-border-image-opacity-wrap">
+                            <label class="bili-settings-sub-label">外框大小：<span id="bili-badge-border-scale-val">${state.settings.badgeBorderScale || 100}%</span></label>
+                            <input type="range" id="bili-badge-border-scale" min="30" max="200" value="${state.settings.badgeBorderScale || 100}" class="bili-settings-range">
+                        </div>
+
+                        <!-- ⭐ 新增：水平偏移 -->
+                        <div class="bili-border-image-opacity-wrap">
+                            <label class="bili-settings-sub-label">水平偏移：<span id="bili-badge-border-x-val">${state.settings.badgeBorderOffsetX || 0}px</span></label>
+                            <input type="range" id="bili-badge-border-x" min="-50" max="50" value="${state.settings.badgeBorderOffsetX || 0}" class="bili-settings-range">
+                        </div>
+
+                        <!-- ⭐ 新增：垂直偏移 -->
+                        <div class="bili-border-image-opacity-wrap">
+                            <label class="bili-settings-sub-label">垂直偏移：<span id="bili-badge-border-y-val">${state.settings.badgeBorderOffsetY || 0}px</span></label>
+                            <input type="range" id="bili-badge-border-y" min="-50" max="50" value="${state.settings.badgeBorderOffsetY || 0}" class="bili-settings-range">
+                        </div>
+
+                        <!-- ⭐ 升级：实时预览（外框+头像） -->
+                        <div class="bili-badge-preview-wrapper" id="bili-badge-preview-wrapper">
+                            <span style="font-size:11px;color:var(--kp-text-muted);margin-bottom:4px;">实时预览（外框+头像）：</span>
+                            <div class="bili-badge-preview-container" id="bili-badge-preview-container">
+                                <!-- 动态生成预览 -->
+                            </div>
+                        </div>
+
+                        <div class="bili-border-image-tip">💡 提示：上传的图片会替换默认的猫耳+圆圈边框。<b>支持动图 GIF/WebP</b>，建议上传透明 PNG，中心留空放头像</div>
+                    </div>
+                </div>
+
                 <!-- 头像 -->
                 <div class="bili-settings-section">
-                    <div class="bili-settings-label">🐱 悬浮球头像</div>
+                    <div class="bili-settings-label">🐱 悬浮球头像（显示在外框中心）</div>
                     <div class="bili-avatar-type">
                         <label>
                             <input type="radio" name="bili-avatar-type" value="emoji" ${state.settings.avatarType === 'emoji' ? 'checked' : ''}>
@@ -1350,7 +1488,7 @@ function openSettingsDialog() {
                         </div>
                     </div>
                     <div class="bili-avatar-preview" id="bili-avatar-preview">
-                        <span style="font-size:11px;color:var(--kp-text-muted);">实时预览 →</span>
+                        <span style="font-size:11px;color:var(--kp-text-muted);">头像预览 →</span>
                         <div class="bili-avatar-preview-badge"></div>
                     </div>
                 </div>
@@ -1368,7 +1506,9 @@ function openSettingsDialog() {
 
     setupSettingsEvents();
     updateAvatarPreview();
+    updateBadgePreview();  // ⭐ 新增：初始化外框预览
 }
+
 
 function getColorValue(key) {
     const colors = state.settings.customColors || THEME_COLORS[state.settings.theme] || THEME_COLORS.pink;
@@ -1483,6 +1623,110 @@ function setupSettingsEvents() {
         };
     }
     
+    // ⭐ 悬浮球外框图片上传
+    const badgeBorderFileInput = dialog.querySelector('#bili-badge-border-upload');
+    const badgeBorderUploadBtn = dialog.querySelector('#bili-badge-border-upload-btn');
+    const badgeBorderClearBtn = dialog.querySelector('#bili-badge-border-clear-btn');
+    
+    if (badgeBorderUploadBtn) {
+        badgeBorderUploadBtn.onclick = () => badgeBorderFileInput.click();
+    }
+    if (badgeBorderClearBtn) {
+        badgeBorderClearBtn.onclick = () => {
+            state.settings.badgeBorderImage = '';
+            closeSettingsDialog();
+            openSettingsDialog();
+        };
+    }
+    if (badgeBorderFileInput) {
+        badgeBorderFileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 5 * 1024 * 1024) {
+                alert('图片太大啦！请选择 5MB 以内的图片');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                state.settings.badgeBorderImage = ev.target.result;
+                closeSettingsDialog();
+                openSettingsDialog();
+            };
+            reader.readAsDataURL(file);
+        };
+    }
+    
+    // ⭐ 隐藏外框开关
+    const hideBorderCheckbox = dialog.querySelector('#bili-badge-border-hide');
+    if (hideBorderCheckbox) {
+        hideBorderCheckbox.onchange = (e) => {
+            state.settings.hideBadgeBorder = e.target.checked;
+            if (floatBadgeElement) applyBadgeBorder();
+            updateBadgePreview();  // ⭐ 更新预览
+        };
+    }
+
+    // ⭐ 新增：层级控制
+    const zIndexSelect = dialog.querySelector('#bili-badge-border-zindex');
+    if (zIndexSelect) {
+        zIndexSelect.onchange = (e) => {
+            state.settings.badgeBorderZIndex = e.target.value;
+            if (floatBadgeElement) applyBadgeBorder();
+            updateBadgePreview();
+        };
+    }
+
+    // ⭐ 新增：缩放控制
+    const scaleRange = dialog.querySelector('#bili-badge-border-scale');
+    const scaleVal = dialog.querySelector('#bili-badge-border-scale-val');
+    if (scaleRange) {
+        scaleRange.oninput = (e) => {
+            const v = parseInt(e.target.value);
+            state.settings.badgeBorderScale = v;
+            if (scaleVal) scaleVal.textContent = v + '%';
+            if (floatBadgeElement) applyBadgeBorder();
+            updateBadgePreview();
+        };
+    }
+
+    // ⭐ 新增：水平偏移
+    const xRange = dialog.querySelector('#bili-badge-border-x');
+    const xVal = dialog.querySelector('#bili-badge-border-x-val');
+    if (xRange) {
+        xRange.oninput = (e) => {
+            const v = parseInt(e.target.value);
+            state.settings.badgeBorderOffsetX = v;
+            if (xVal) xVal.textContent = v + 'px';
+            if (floatBadgeElement) applyBadgeBorder();
+            updateBadgePreview();
+        };
+    }
+
+    // ⭐ 新增：垂直偏移
+    const yRange = dialog.querySelector('#bili-badge-border-y');
+    const yVal = dialog.querySelector('#bili-badge-border-y-val');
+    if (yRange) {
+        yRange.oninput = (e) => {
+            const v = parseInt(e.target.value);
+            state.settings.badgeBorderOffsetY = v;
+            if (yVal) yVal.textContent = v + 'px';
+            if (floatBadgeElement) applyBadgeBorder();
+            updateBadgePreview();
+        };
+    }
+
+    // ⭐ 新增：悬浮球尺寸切换时更新预览
+    dialog.querySelectorAll('input[name="bili-badge-size"]').forEach(radio => {
+        radio.onchange = (e) => {
+            // 临时更新 state 以便预览显示正确尺寸
+            const tempSize = state.settings.badgeSize;
+            state.settings.badgeSize = e.target.value;
+            updateBadgePreview();
+            state.settings.badgeSize = tempSize; // 恢复，等保存时再真正应用
+        };
+    });
+
+    
     dialog.querySelectorAll('input[name="bili-avatar-type"]').forEach(radio => {
         radio.onchange = (e) => {
             const type = e.target.value;
@@ -1529,6 +1773,12 @@ function setupSettingsEvents() {
         state.settings.borderImageFit = DEFAULT_SETTINGS.borderImageFit;
         state.settings.borderImageOpacity = DEFAULT_SETTINGS.borderImageOpacity;
         state.settings.customColors = DEFAULT_SETTINGS.customColors;
+        state.settings.badgeBorderImage = DEFAULT_SETTINGS.badgeBorderImage;
+        state.settings.hideBadgeBorder = DEFAULT_SETTINGS.hideBadgeBorder;
+        state.settings.badgeBorderZIndex = DEFAULT_SETTINGS.badgeBorderZIndex;      // ⭐ 新增
+        state.settings.badgeBorderScale = DEFAULT_SETTINGS.badgeBorderScale;        // ⭐ 新增
+        state.settings.badgeBorderOffsetX = DEFAULT_SETTINGS.badgeBorderOffsetX;    // ⭐ 新增
+        state.settings.badgeBorderOffsetY = DEFAULT_SETTINGS.badgeBorderOffsetY;    // ⭐ 新增
         
         closeSettingsDialog();
         openSettingsDialog();
@@ -1536,6 +1786,7 @@ function setupSettingsEvents() {
         if (floatBadgeElement) {
             floatBadgeElement.setAttribute('data-size', state.settings.badgeSize);
             updateBadgeAvatar();
+            applyBadgeBorder();
         }
         saveExtensionSettings();
     };
@@ -1595,12 +1846,16 @@ function setupSettingsEvents() {
         if (floatBadgeElement) {
             floatBadgeElement.setAttribute('data-size', badgeSize);
             updateBadgeAvatar();
+            applyBadgeBorder();  // ⭐ 应用悬浮球外框
         }
         
         saveExtensionSettings();
         closeSettingsDialog();
     };
 }
+
+
+
 
 function refreshColorInputs(themeKey) {
     if (!settingsDialogElement) return;
@@ -1655,6 +1910,150 @@ function updateAvatarPreview() {
         }
     }
 }
+
+// ⭐ 新增：悬浮球外框+头像实时预览
+// ⭐ 新增：悬浮球外框+头像实时预览（修复移动端偏移）
+function updateBadgePreview() {
+    if (!settingsDialogElement) return;
+    const container = settingsDialogElement.querySelector('#bili-badge-preview-container');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    // ⭐ 根据当前设置的悬浮球尺寸预览
+    const currentSize = state.settings.badgeSize || 'medium';
+    const dimensions = BADGE_DIMENSIONS[currentSize];
+    
+    // ⭐ 判断是否移动端（small 尺寸在移动端会缩小 0.85）
+    const isMobile = window.innerWidth <= 768;
+    const isMobileSmall = isMobile && currentSize === 'small';
+    
+    // 创建对应尺寸的悬浮球预览
+    const preview = document.createElement('div');
+    preview.className = 'bili-badge-preview-mini';
+    preview.style.cssText = `
+        position: relative;
+        width: ${dimensions.w}px;
+        height: ${dimensions.h}px;
+        margin: 0 auto;
+        ${isMobileSmall ? 'transform: scale(0.85);' : ''}
+    `;
+    
+    // 外框层
+    const borderWrapper = document.createElement('div');
+    borderWrapper.style.cssText = `
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+    `;
+    
+    const zIndex = state.settings.badgeBorderZIndex || 'above';
+    borderWrapper.style.zIndex = zIndex === 'above' ? '3' : '1';
+    
+    if (state.settings.badgeBorderImage && !state.settings.hideBadgeBorder) {
+        const borderImg = document.createElement('img');
+        borderImg.src = state.settings.badgeBorderImage;
+        borderImg.style.cssText = `
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        `;
+        
+        const scale = (state.settings.badgeBorderScale || 100) / 100;
+        const offsetX = state.settings.badgeBorderOffsetX || 0;
+        const offsetY = state.settings.badgeBorderOffsetY || 0;
+        borderImg.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+        
+        borderWrapper.appendChild(borderImg);
+    } else if (!state.settings.hideBadgeBorder) {
+        // ⭐ 根据尺寸显示对应大小的默认猫耳
+        let earWidth, earHeight, earBorder, earTop, earLeftPos, earRightPos;
+        
+        if (currentSize === 'large') {
+            earWidth = 22; earHeight = 20; earBorder = 3.5; earTop = 4; 
+            earLeftPos = 6; earRightPos = 6;
+        } else if (currentSize === 'small') {
+            earWidth = 14; earHeight = 12; earBorder = 2.5; earTop = 2;
+            earLeftPos = 4; earRightPos = 4;
+        } else { // medium
+            earWidth = 18; earHeight = 16; earBorder = 3; earTop = 3;
+            earLeftPos = 5; earRightPos = 5;
+        }
+        
+        const earLeft = document.createElement('div');
+        earLeft.style.cssText = `
+            position: absolute;
+            width: ${earWidth}px; height: ${earHeight}px;
+            background: var(--kp-primary-deep);
+            border: ${earBorder}px solid var(--kp-bg);
+            border-radius: 10px 10px 0 0;
+            top: ${earTop}px; left: ${earLeftPos}px;
+            transform: rotate(-30deg);
+            transform-origin: bottom center;
+        `;
+        const earRight = document.createElement('div');
+        earRight.style.cssText = earLeft.style.cssText;
+        earRight.style.left = 'auto';
+        earRight.style.right = earRightPos + 'px';
+        earRight.style.transform = 'rotate(30deg)';
+        
+        borderWrapper.appendChild(earLeft);
+        borderWrapper.appendChild(earRight);
+    }
+    
+    preview.appendChild(borderWrapper);
+    
+    // ⭐ 头像层（根据尺寸调整）
+    const currentSizeConfig = {
+        large: { circle: 64, left: 4, border: 4.5, fontSize: 16 },
+        medium: { circle: 52, left: 3, border: 4, fontSize: 14 },
+        small: { circle: 40, left: 2, border: 3, fontSize: 12 }
+    };
+    const sizeConfig = currentSizeConfig[currentSize];
+    
+    const circle = document.createElement('div');
+    circle.style.cssText = `
+        position: absolute;
+        bottom: 0;
+        left: ${sizeConfig.left}px;
+        width: ${sizeConfig.circle}px;
+        height: ${sizeConfig.circle}px;
+        background: var(--kp-bg);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        z-index: 2;
+    `;
+    
+    if (!state.settings.hideBadgeBorder && !state.settings.badgeBorderImage) {
+        circle.style.border = `${sizeConfig.border}px solid var(--kp-primary-deep)`;
+    }
+    
+    // 头像内容
+    const type = settingsDialogElement.querySelector('input[name="bili-avatar-type"]:checked')?.value || 'emoji';
+    
+    if (type === 'emoji') {
+        const emoji = settingsDialogElement.querySelector('#bili-avatar-emoji')?.value.trim() || THEMES[state.settings.theme].emoji;
+        circle.innerHTML = `<div style="font-size:${sizeConfig.fontSize}px;font-weight:bold;color:var(--kp-primary-deep);">${emoji}</div>`;
+    } else if (type === 'url') {
+        const url = settingsDialogElement.querySelector('#bili-avatar-url')?.value.trim();
+        if (url) {
+            circle.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">`;
+        }
+    } else if (type === 'upload') {
+        if (state.settings.avatarValue) {
+            circle.innerHTML = `<img src="${state.settings.avatarValue}" style="width:100%;height:100%;object-fit:cover;">`;
+        }
+    }
+    
+    preview.appendChild(circle);
+    container.appendChild(preview);
+}
+
+
+
 
 function refreshSettingsUI() {
     if (!settingsDialogElement) return;
@@ -1883,15 +2282,36 @@ function initExtension() {
         }
     }
 
-    createPanel();
-    renderGroups();
-
-    if (
-        state.currentGroup &&
-        state.currentBvid &&
-        state.playlistData[state.currentGroup]
-    ) {
-        loadVideo(state.currentGroup, state.currentBvid);
+    // 🔧 根据设置决定启动方式
+    if (state.settings.startAsFloating) {
+        // 悬浮球启动
+        createPanel();
+        panelElement.style.display = 'none';
+        state.isFloating = true;
+        
+        // 🔧 不传参数，使用默认位置（桌面：左侧40px 顶部40%，移动：左侧15px 顶部40%）
+        createFloatBadge();
+        
+        // 如果有上次播放记录，静默加载
+        if (
+            state.currentGroup &&
+            state.currentBvid &&
+            state.playlistData[state.currentGroup]
+        ) {
+            loadVideo(state.currentGroup, state.currentBvid);
+        }
+    } else {
+        // 完整面板启动
+        createPanel();
+        renderGroups();
+        
+        if (
+            state.currentGroup &&
+            state.currentBvid &&
+            state.playlistData[state.currentGroup]
+        ) {
+            loadVideo(state.currentGroup, state.currentBvid);
+        }
     }
 
     let attempts = 0;
@@ -1926,6 +2346,8 @@ function initExtension() {
         }
     }, 1000);
 }
+
+
 
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
     initExtension();
