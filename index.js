@@ -1524,14 +1524,6 @@ function openHelpDialog() {
     helpDialogElement.querySelector('.bili-help-mask').onclick = closeHelpDialog;
 }
 
-function closeHelpDialog() {
-    if (helpDialogElement) {
-        helpDialogElement.remove();
-        helpDialogElement = null;
-    }
-}
-
-
 
 function closeHelpDialog() {
     if (helpDialogElement) {
