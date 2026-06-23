@@ -452,12 +452,46 @@ function renderGroups() {
 
             const summary = document.createElement('summary');
             summary.className = 'bili-summary';
-            // ⭐ 箭头从 👇 换成 ⭐
             summary.innerHTML = `
             <span class="bili-arrow">⭐</span>
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
             ${groupName} (${videos.length})
             </span>`;
+
+            // ⭐ 分类重命名按钮
+            const groupRename = document.createElement('span');
+            groupRename.className = 'bili-rename';
+            groupRename.textContent = '✎';
+            groupRename.title = '重命名分类';
+            groupRename.style.marginRight = '4px';
+            groupRename.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const newName = prompt(`重命名分类「${groupName}」：`, groupName);
+                if (!newName || newName.trim() === groupName) return;
+                const trimmed = newName.trim();
+                if (state.playlistData[trimmed]) {
+                    alert('已存在同名分类哦~');
+                    return;
+                }
+                // 用新名字重建分类（保留顺序）
+                const newPlaylistData = {};
+                Object.keys(state.playlistData).forEach(key => {
+                    if (key === groupName) {
+                        newPlaylistData[trimmed] = state.playlistData[key];
+                    } else {
+                        newPlaylistData[key] = state.playlistData[key];
+                    }
+                });
+                state.playlistData = newPlaylistData;
+                // 同步更新当前分类记录
+                if (state.currentGroup === groupName) {
+                    state.currentGroup = trimmed;
+                }
+                renderGroups();
+                saveExtensionSettings();
+            };
+            summary.appendChild(groupRename);
 
             const groupDel = document.createElement('span');
             groupDel.className = 'bili-del';
@@ -574,6 +608,7 @@ function renderGroups() {
         saveExtensionSettings();
     }, 30);
 }
+
 
 // ⭐ 新增：让某个视频项进入"重命名"状态
 function startRenameItem(liElement, groupName, item) {
@@ -1158,83 +1193,323 @@ function openHelpDialog() {
                 <button class="bili-help-close" type="button">×</button>
             </div>
             <div class="bili-help-body">
+                <!-- 添加视频 -->
                 <div class="bili-help-section">
                     <div class="bili-help-title">🎬 添加视频</div>
                     <div class="bili-help-content">
-                        在「投喂」输入框粘贴以下任一格式即可：
+                        <b>✨ 支持的链接格式：</b>
                         <ul>
-                            <li><b>纯 BV 号：</b><code>BV1SPQeBuE2d</code></li>
-                            <li><b>完整链接：</b><code>https://www.bilibili.com/video/BV1xxx</code></li>
-                            <li><b>分P链接：</b>链接带 <code>?p=2</code> 自动识别</li>
-                            <li><b>追踪参数：</b>带 <code>?vd_source=xxx</code> 也能识别</li>
-                            <li><b>短链：</b><code>https://b23.tv/xxx</code>（自动展开）</li>
+                            <li><b>纯 BV 号：</b><code>BV1SPQeBuE2d</code> — 直接添加单集，不询问多P</li>
+                            <li><b>完整视频链接：</b><code>https://www.bilibili.com/video/BV1xxx</code> — 会弹窗询问是否为多P合集</li>
+                            <li><b>分P链接：</b><code>https://...video/BV1xxx?p=2</code> — 自动识别第几集</li>
+                            <li><b>带追踪参数：</b><code>https://...?vd_source=xxx</code> — 自动去除杂项参数</li>
+                            <li><b>B站短链：</b><code>https://b23.tv/abc123</code> — 自动展开（可能受 CORS 限制）</li>
                         </ul>
-                        💡 想自定义名字？在链接后<b>加个空格再写名字</b>：
+
+                        <b>📝 自定义视频名称：</b>
+                        <div class="bili-help-code">链接或BV号 + 空格 + 自定义名字</div>
+                        例如：
                         <div class="bili-help-code">BV1SPQeBuE2d 蜡笔小新第一集</div>
-                        ⭐ 粘贴链接后会自动获取真实标题哦！
+                        <div class="bili-help-code">https://...BV1xxx 猫和老鼠</div>
+
+                        <b>📂 选择目标分类：</b><br>
+                        粘贴链接后，如果有<b>多个分类</b>，会先弹窗让你选择：
+                        <ul>
+                            <li>输入序号（如 <code>1</code>、<code>2</code>）选择分类</li>
+                            <li>点击「取消」或输入无效值 → 使用当前正在播放的分类</li>
+                            <li>只有一个分类时不会弹窗，直接添加</li>
+                        </ul>
+
+                        <b>🎯 批量添加多P视频：</b><br>
+                        粘贴<b>完整链接</b>后，选完分类会继续询问：
+                        <ul>
+                            <li>如果是单集视频 → 点<b>「取消」</b></li>
+                            <li>如果是多P合集 → 输入总集数（如 <code>130</code>），确认后自动批量添加</li>
+                            <li>批量添加的标题格式：<code>自定义名字 - P1</code>、<code>自定义名字 - P2</code>...</li>
+                            <li>没有自定义名字时用 BV 号：<code>BV1xxx - P1</code>、<code>BV1xxx - P2</code>...</li>
+                            <li>不确定集数？可以先打开视频看播放列表，再回来输入</li>
+                        </ul>
+
+                        <b>⚠️ 注意事项：</b>
+                        <ul>
+                            <li>纯 BV 号不会询问多P，直接添加为单集</li>
+                            <li>番剧链接暂不支持，请复制播放页的 BV 号</li>
+                            <li>短链展开可能受浏览器 CORS 限制，建议直接用完整链接</li>
+                        </ul>
                     </div>
                 </div>
 
+                <!-- 分类管理 -->
                 <div class="bili-help-section">
                     <div class="bili-help-title">📂 分类管理</div>
                     <div class="bili-help-content">
+                        <b>创建新分类：</b>
+                        <ol>
+                            <li>在「新分类/系列名称」输入框填入名字（如「动画」「电影」「追剧池」）</li>
+                            <li>点击<b>「新建系列」</b>按钮</li>
+                            <li>新分类会立即显示在下方列表中</li>
+                        </ol>
+
+                        <b>重命名分类：</b>
                         <ul>
-                            <li>在「新分类」输入框填名字 → 点击「新建系列」</li>
-                            <li>视频右侧的下拉框可<b>移动到其他分类</b></li>
-                            <li>分类名 / 视频名右侧的 <b>×</b> 可删除</li>
+                            <li>鼠标<b>悬停</b>到分类名上 → 右侧出现 <b>✎</b> 笔形按钮 → 点击</li>
+                            <li>输入新名字 → 点击确定</li>
+                            <li>分类下的所有视频会保留，正在播放的视频不受影响</li>
+                            <li>不能改成已存在的分类名</li>
+                        </ul>
+
+                        <b>移动视频到其他分类：</b>
+                        <ul>
+                            <li>点击视频右侧的<b>「移动」</b>下拉框</li>
+                            <li>选择目标分类</li>
+                            <li>视频会立即转移到新分类下</li>
+                        </ul>
+
+                        <b>删除分类或视频：</b>
+                        <ul>
+                            <li>点击分类名右侧的 <b>×</b> → 删除整个分类（有视频时会二次确认）</li>
+                            <li>点击视频名右侧的 <b>×</b> → 删除单个视频</li>
+                            <li>删除操作无法撤销，请谨慎操作</li>
+                        </ul>
+
+                        <b>分类展开/折叠：</b>
+                        <ul>
+                            <li>点击分类名前的 <b>⭐</b> → 展开/折叠视频列表</li>
+                            <li>当前正在播放的分类会自动展开</li>
                         </ul>
                     </div>
                 </div>
 
+                <!-- 重命名视频 -->
                 <div class="bili-help-section">
                     <div class="bili-help-title">✏️ 重命名视频</div>
                     <div class="bili-help-content">
-                        两种方式都能改名：
+                        <b>两种进入重命名模式的方式：</b>
                         <ul>
-                            <li><b>双击</b>视频名</li>
-                            <li><b>悬停</b>视频后点击右侧 ✎ 笔形按钮</li>
+                            <li><b>方式一：</b>鼠标<b>悬停</b>到视频名上 → 右侧出现 <b>✎</b> 笔形按钮 → 点击</li>
+                            <li><b>方式二：</b>直接<b>双击</b>视频名</li>
                         </ul>
-                        操作：<b>Enter</b> 保存 / <b>Esc</b> 取消 / 点击外部自动保存
-                    </div>
-                </div>
 
-                <div class="bili-help-section">
-                    <div class="bili-help-title">🎨 主题与外观</div>
-                    <div class="bili-help-content">
-                        顶部 <b>⚙ 设置</b> 按钮可切换 10 套主题、自定义配色、悬浮球样式、边框图片等。
-                    </div>
-                </div>
-
-                <div class="bili-help-section">
-                    <div class="bili-help-title">🐱 悬浮球</div>
-                    <div class="bili-help-content">
-                        点击右上 <b>×</b> 缩成悬浮猫耳：
+                        <b>编辑操作：</b>
                         <ul>
-                            <li><b>单击猫耳</b>：恢复主面板</li>
-                            <li><b>拖拽猫耳</b>：移动位置（自动保存）</li>
+                            <li>输入框会自动聚焦并全选当前名字</li>
+                            <li>输入新名字（最多 50 个字符）</li>
+                            <li>按<b> Enter</b> → 保存修改</li>
+                            <li>按<b> Esc</b> → 取消修改</li>
+                            <li>点击输入框外部 → 自动保存修改</li>
+                        </ul>
+
+                        <b>💡 小技巧：</b>
+                        <ul>
+                            <li>批量添加的视频默认标题是「名字 - P1」格式，可以改成更直观的名字</li>
+                            <li>支持 Emoji 和特殊符号（如 🎬、⭐、第一话）</li>
+                            <li>移动端也支持重命名，虚拟键盘不会误触</li>
                         </ul>
                     </div>
                 </div>
 
+                <!-- 主题与外观 -->
                 <div class="bili-help-section">
-                    <div class="bili-help-title">📱 移动端</div>
+                    <div class="bili-help-title">🎨 主题与外观设置</div>
                     <div class="bili-help-content">
-                        手机访问会自动适配：
+                        点击顶部<b> ⚙ 设置</b>按钮打开设置面板：
+
+                        <b>🎨 主题配色（10 套预设）：</b>
                         <ul>
-                            <li>面板自动居中，按屏幕 94% 宽度显示</li>
-                            <li>输入框、按钮变大，方便触屏</li>
-                            <li>改名输入框不触发拖拽</li>
+                            <li>🩷 樱花粉 / 🌼 嫩黄 / 🌿 淡绿 / 🪟 毛玻璃白 / 🕶️ 毛玻璃黑</li>
+                            <li>🌸 夜樱 / 🌊 深海蓝 / 🌅 落日橘 / 💜 薰衣草 / ☕ 摩卡棕</li>
+                            <li>每套主题都有独特配色和氛围</li>
+                        </ul>
+
+                        <b>🖼️ 悬浮窗背景替换：</b>
+                        <ul>
+                            <li>支持上传图片作为面板背景（支持 GIF/WebP 动图）</li>
+                            <li><b>背景模式：</b>保留原边框 / 图片包边</li>
+                            <li><b>填充方式：</b>覆盖 / 包含 / 平铺 / 拉伸</li>
+                            <li><b>透明度调节：</b>0-100%</li>
+                        </ul>
+
+                        <b>🎨 自定义配色：</b>
+                        <ul>
+                            <li>可以单独调整主色、辅色、背景色、文字颜色等</li>
+                            <li>点击「重置配色」或「应用当前主题预设」恢复默认</li>
+                        </ul>
+
+                        <b>🔘 悬浮球尺寸：</b>
+                        <ul>
+                            <li>大（72px）/ 中（58px）/ 小（44px）三种尺寸</li>
+                            <li>移动端小尺寸会自动缩小到 0.85 倍</li>
+                        </ul>
+
+                        <b>🎀 悬浮球外框装饰：</b>
+                        <ul>
+                            <li>上传自定义外框图片（支持动图 GIF/WebP）</li>
+                            <li>可调整外框大小（30%-200%）、位置偏移（水平/垂直）</li>
+                            <li>层级控制：外框在前（盖住头像）/ 外框在后（头像在前）</li>
+                            <li>勾选「隐藏外框」可以仅显示头像（方便测试新外框）</li>
+                            <li>实时预览功能可以看到调整效果</li>
+                        </ul>
+
+                        <b>🐱 悬浮球头像：</b>
+                        <ul>
+                            <li><b>颜文字/Emoji：</b>输入任意 Emoji（如 🐱、⎚˕⎚）</li>
+                            <li><b>图片 URL：</b>粘贴网络图片链接</li>
+                            <li><b>上传图片：</b>从本地选择图片（最大 2MB）</li>
                         </ul>
                     </div>
                 </div>
 
+                <!-- 悬浮球 -->
                 <div class="bili-help-section">
-                    <div class="bili-help-title">💾 数据保存</div>
+                    <div class="bili-help-title">🐱 悬浮球功能</div>
                     <div class="bili-help-content">
-                        所有播放列表、设置、主题、位置都自动保存到本地。无需手动备份~
+                        <b>进入悬浮球模式：</b>
+                        <ul>
+                            <li>点击主面板右上角的 <b>×</b> 按钮</li>
+                            <li>面板会缩成一个可爱的猫耳悬浮球</li>
+                            <li>默认位置：桌面左侧 40px，移动端左侧 15px</li>
+                        </ul>
+
+                        <b>悬浮球操作：</b>
+                        <ul>
+                            <li><b>单击猫耳</b> → 恢复完整主面板</li>
+                            <li><b>拖拽猫耳</b> → 移动到屏幕任意位置（位置会自动保存）</li>
+                            <li><b>悬停猫耳</b> → 放大 1.08 倍（视觉反馈）</li>
+                        </ul>
+
+                        <b>启动模式设置：</b>
+                        <ul>
+                            <li>默认以悬浮球模式启动（占用空间更小）</li>
+                            <li>可在设置中修改为完整面板启动</li>
+                        </ul>
+
+                        <b>💡 使用场景：</b>
+                        <ul>
+                            <li>看电影时不想占用太多屏幕空间 → 缩成悬浮球</li>
+                            <li>需要换集或管理播放列表 → 点击悬浮球恢复面板</li>
+                            <li>悬浮球会记住上次播放的视频，点击后继续播放</li>
+                        </ul>
                     </div>
                 </div>
 
+                <!-- 移动端 -->
+                <div class="bili-help-section">
+                    <div class="bili-help-title">📱 移动端体验</div>
+                    <div class="bili-help-content">
+                        <b>自动适配特性：</b>
+                        <ul>
+                            <li>面板自动居中，宽度占屏幕 94%（最大 500px）</li>
+                            <li>高度占屏幕 82%（最大 700px），避免遮挡</li>
+                            <li>所有按钮、输入框自动放大，方便触屏操作</li>
+                            <li>禁用调整大小功能，避免误触</li>
+                        </ul>
+
+                        <b>触屏优化：</b>
+                        <ul>
+                            <li>双击重命名不会触发拖拽</li>
+                            <li>重命名时虚拟键盘弹出不会干扰操作</li>
+                            <li>悬浮球拖拽支持触摸手势</li>
+                            <li>设置面板滚动流畅，支持惯性滑动</li>
+                        </ul>
+
+                        <b>兼容性：</b>
+                        <ul>
+                            <li>支持 iOS Safari、Android Chrome、微信内置浏览器</li>
+                            <li>主题毛玻璃效果在移动端可能受限（系统差异）</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- 快捷操作 -->
+                <div class="bili-help-section">
+                    <div class="bili-help-title">⌨️ 快捷操作</div>
+                    <div class="bili-help-content">
+                        <b>面板控制：</b>
+                        <ul>
+                            <li><b>拖拽标题栏</b> → 移动面板位置</li>
+                            <li><b>拖拽右下角</b> → 调整面板大小（桌面端）</li>
+                            <li><b>点击 _</b> → 折叠/展开播放列表区域</li>
+                            <li><b>点击 ×</b> → 缩成悬浮球</li>
+                            <li><b>点击 ?</b> → 打开本使用说明</li>
+                        </ul>
+
+                        <b>视频播放：</b>
+                        <ul>
+                            <li><b>单击视频名</b> → 立即播放</li>
+                            <li><b>双击视频名</b> → 进入重命名模式</li>
+                        </ul>
+
+                        <b>命令行快捷方式（SillyTavern）：</b>
+                        <ul>
+                            <li>输入斜杠命令 <code>/bili</code> → 快速唤醒/隐藏面板</li>
+                            <li>在扩展设置菜单也有「唤醒/隐藏 BiliPlayer」按钮</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- 数据保存 -->
+                <div class="bili-help-section">
+                    <div class="bili-help-title">💾 数据保存与备份</div>
+                    <div class="bili-help-content">
+                        <b>自动保存内容：</b>
+                        <ul>
+                            <li>所有播放列表和分类（包括分类名修改）</li>
+                            <li>当前播放进度（视频 + 分类）</li>
+                            <li>主题、配色、悬浮球设置</li>
+                            <li>面板位置和大小</li>
+                            <li>折叠/展开状态</li>
+                        </ul>
+
+                        <b>保存机制：</b>
+                        <ul>
+                            <li>双重保存：<code>localStorage</code> + SillyTavern 配置文件</li>
+                            <li>任何修改都会立即触发保存，无需手动操作</li>
+                            <li>刷新页面后自动恢复上次状态</li>
+                        </ul>
+
+                        <b>💡 注意事项：</b>
+                        <ul>
+                            <li>清除浏览器缓存会丢失数据，建议定期备份 SillyTavern 配置</li>
+                            <li>上传的图片（背景、外框、头像）以 Base64 编码保存，文件较大时可能影响性能</li>
+                            <li>删除操作无法撤销，重要视频建议先移动到「备份」分类</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- 常见问题 -->
+                <div class="bili-help-section">
+                    <div class="bili-help-title">❓ 常见问题</div>
+                    <div class="bili-help-content">
+                        <b>Q: 为什么添加视频要我选分类？</b><br>
+                        A: 因为无法自动判断你想加到哪里，所以会先让你选择目标分类，避免加错地方。只有一个分类时不会弹窗。
+
+                        <b>Q: 批量添加的视频标题都是「BV号 - P1」怎么办？</b><br>
+                        A: 添加时在链接后加空格+自定义名字，例如：<code>https://...BV1xxx 猫和老鼠</code>，生成的标题会变成「猫和老鼠 - P1」「猫和老鼠 - P2」...
+
+                        <b>Q: 为什么纯 BV 号不询问多P？</b><br>
+                        A: 为了简化流程，纯 BV 号默认当作单集视频。如果是多P合集，请用完整链接添加。
+
+                        <b>Q: 短链无法展开怎么办？</b><br>
+                        A: 浏览器 CORS 安全限制可能阻止短链展开，建议直接复制完整视频链接使用。
+
+                        <b>Q: 悬浮球位置保存了吗？</b><br>
+                        A: 悬浮球每次拖拽后会自动保存位置，刷新页面后会恢复到上次的位置。
+
+                        <b>Q: 移动端看不到调整大小的功能？</b><br>
+                        A: 移动端自动禁用调整大小功能，面板会自动适配屏幕尺寸。
+
+                        <b>Q: 毛玻璃主题在某些浏览器不生效？</b><br>
+                        A: 毛玻璃效果需要浏览器支持 <code>backdrop-filter</code>，老旧浏览器可能不支持，建议使用实色主题。
+
+                        <b>Q: 播放列表突然清空了？</b><br>
+                        A: 可能是浏览器缓存被清理，建议定期备份 SillyTavern 的配置文件（<code>public/settings.json</code>）。
+
+                        <b>Q: 分类重命名后原来的视频还在吗？</b><br>
+                        A: 在的！重命名只是改了分类名字，分类下的所有视频都会保留，正在播放的视频也不受影响。
+                    </div>
+                </div>
+
+                <!-- 页脚 -->
                 <div class="bili-help-footer">
                     🐾 BiliPlayer v2.0.0 · 让小主人看电影更开心~<br>
                     <span style="font-size:10px; opacity:0.8;">💖 特别鸣谢：本插件底层核心逻辑由 <b>老农民</b> 老师提供支持</span>
@@ -1248,6 +1523,15 @@ function openHelpDialog() {
     helpDialogElement.querySelector('.bili-help-close').onclick = closeHelpDialog;
     helpDialogElement.querySelector('.bili-help-mask').onclick = closeHelpDialog;
 }
+
+function closeHelpDialog() {
+    if (helpDialogElement) {
+        helpDialogElement.remove();
+        helpDialogElement = null;
+    }
+}
+
+
 
 function closeHelpDialog() {
     if (helpDialogElement) {
@@ -2079,27 +2363,42 @@ function refreshSettingsUI() {
 function parseBilibiliInput(input) {
     if (!input) return null;
     
-    // 情况 1：纯 BV 号
-    const bvMatch = input.match(/(BV[a-zA-Z0-9]+)/);
-    if (bvMatch) {
-        let bvid = bvMatch[1];
-        let pageNum = null;
-        if (input.includes('p=')) {
-            const pParts = input.split('p=');
-            if (pParts[1]) {
-                const numMatch = pParts[1].match(/^([0-9]+)/);
-                if (numMatch) pageNum = numMatch[1];
-            }
-        }
-        return { bvid, pageNum, sourceTitle: null };
-    }
-    
-    // 情况 2：完整 URL
-    const videoUrlMatch = input.match(/bilibili\.com\/video\/(BV[a-zA-Z0-9]+)/i);
+    // ⭐ 情况 1：完整 URL（宽容匹配，允许前面有任意字符）
+    const videoUrlMatch = input.match(/(?:https?:\/\/)?(?:www\.)?bilibili\.com\/video\/(BV[a-zA-Z0-9]+)/i);
     if (videoUrlMatch) {
         const bvid = videoUrlMatch[1];
         const pageNum = extractPageFromUrl(input);
-        return { bvid, pageNum, sourceTitle: null, needFetchTitle: true };
+        return { 
+            bvid, 
+            pageNum, 
+            sourceTitle: null, 
+            needFetchTitle: true, 
+            needFetchPages: true  // ⭐ 完整链接才询问多P
+        };
+    }
+    
+    // ⭐ 情况 2：纯 BV 号（只有当输入"几乎只有 BV 号"时才触发）
+    // 修改判断：如果有 bilibili.com 就不走这里
+    if (!input.includes('bilibili.com')) {
+        const bvMatch = input.match(/(BV[a-zA-Z0-9]+)/);
+        if (bvMatch) {
+            let bvid = bvMatch[1];
+            let pageNum = null;
+            if (input.includes('p=')) {
+                const pParts = input.split('p=');
+                if (pParts[1]) {
+                    const numMatch = pParts[1].match(/^([0-9]+)/);
+                    if (numMatch) pageNum = numMatch[1];
+                }
+            }
+            return { 
+                bvid, 
+                pageNum, 
+                sourceTitle: null,
+                needFetchTitle: true,   // ⭐ 获取标题
+                needFetchPages: false   // ⭐ 不询问多P
+            };
+        }
     }
     
     // 情况 3：短链 b23.tv
@@ -2125,6 +2424,8 @@ function parseBilibiliInput(input) {
     return null;
 }
 
+
+
 function extractPageFromUrl(url) {
     try {
         if (url.includes('?')) {
@@ -2136,21 +2437,6 @@ function extractPageFromUrl(url) {
         const m = url.match(/[?&]p=(\d+)/);
         if (m) return m[1];
     } catch (e) { }
-    return null;
-}
-
-async function fetchVideoTitle(bvid) {
-    try {
-        const resp = await fetch(`https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`, {
-            credentials: 'omit'
-        });
-        const data = await resp.json();
-        if (data?.code === 0 && data?.data?.title) {
-            return data.data.title;
-        }
-    } catch (e) {
-        console.warn('[BiliPlayer] 获取标题失败', e);
-    }
     return null;
 }
 
@@ -2199,7 +2485,7 @@ async function addVideo() {
     }
 
     if (parsed.isBangumi) {
-        alert('番剧链接暂不支持直接添加哦~\n请在网页打开番剧，复制播放页的 BV 号或普通视频链接~');
+        alert('番剧链接暂不支持直接添加哦~\n请在网页打开番剧,复制播放页的 BV 号或普通视频链接~');
         return;
     }
 
@@ -2212,36 +2498,103 @@ async function addVideo() {
         Object.assign(parsed, expanded);
     }
 
-    const { bvid, pageNum, sourceTitle, needFetchTitle } = parsed;
-    const finalBvid = pageNum ? bvid + "_p" + pageNum : bvid;
-    
-    let displayTitle = customTitle || sourceTitle || (pageNum ? `${bvid} (P${pageNum})` : bvid);
+    const { bvid, pageNum } = parsed;
+    const finalBvid = pageNum ? `${bvid}_p${pageNum}` : bvid;
+    const displayTitle = customTitle || (pageNum ? `${bvid} (P${pageNum})` : bvid);
 
-    let defaultBox = Object.keys(state.playlistData)[0] || "🐾 未分类";
+    // ⭐ 让用户选择目标分类
+    const allGroups = Object.keys(state.playlistData);
+    let defaultBox;
+
+    if (allGroups.length === 1) {
+        // 只有一个分类，直接用
+        defaultBox = allGroups[0];
+    } else {
+        // 多个分类，让用户选择
+        const groupList = allGroups.map((name, idx) => `${idx + 1}. ${name}`).join('\n');
+        const choiceStr = prompt(
+            `请选择要添加到哪个分类？\n（输入序号）\n\n${groupList}`
+        );
+        const choiceIdx = parseInt(choiceStr) - 1;
+        if (choiceStr === null || isNaN(choiceIdx) || choiceIdx < 0 || choiceIdx >= allGroups.length) {
+            // 用户取消或输入无效，默认用当前分类或第一个
+            defaultBox = state.currentGroup || allGroups[0];
+        } else {
+            defaultBox = allGroups[choiceIdx];
+        }
+    }
+
     if (!state.playlistData[defaultBox]) state.playlistData[defaultBox] = [];
 
+    // ⭐ 如果需要批量添加多P，先询问，避免单独添加第一集
+    if (parsed.needFetchPages) {
+        const totalStr = prompt(
+            `📺 检测到这是一个视频链接！\n\n` +
+            `· 如果是单集视频，直接点「取消」\n` +
+            `· 如果是多P合集（如动画/连续剧），请输入总集数\n\n` +
+            `BV号：${bvid}\n` +
+            `（不确定集数？可以先打开视频看看播放列表）`
+        );
+        
+        if (totalStr !== null) {
+            const total = parseInt(totalStr);
+            if (!isNaN(total) && total > 1) {
+                // ⭐ 用户确认是多P，直接批量添加，不再单独添加第一集
+                if (confirm(`确定添加全部 ${total} 集到「${defaultBox}」吗？`)) {
+                    const loadingToast = document.createElement('div');
+                    loadingToast.id = 'bili-batch-loading-toast';
+                    loadingToast.textContent = `正在添加 ${total} 集，请稍候...`;
+                    loadingToast.style.cssText = `
+                        position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+                        background: var(--kp-primary); color: white; padding: 12px 24px;
+                        border-radius: 12px; z-index: 999999; font-size: 14px; font-weight: bold;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                    `;
+                    document.body.appendChild(loadingToast);
+
+                    let addedCount = 0;
+                    const baseTitle = customTitle || bvid;
+                    
+                    for (let i = 1; i <= total; i++) {
+                        const pBvid = `${bvid}_p${i}`;
+                        if (state.playlistData[defaultBox].some(v => v.bvid === pBvid)) continue;
+                        state.playlistData[defaultBox].push({
+                            bvid: pBvid,
+                            title: `${baseTitle} - P${i}`
+                        });
+                        addedCount++;
+                    }
+                    
+                    loadingToast.remove();
+
+                    if (addedCount > 0) {
+                        input.value = '';
+                        renderGroups();
+                        saveExtensionSettings();
+                        // 自动播放第一集
+                        if (!state.currentBvid) loadVideo(defaultBox, `${bvid}_p1`);
+                        alert(`✅ 成功添加 ${addedCount} 集！`);
+                    }
+                    return; // ⭐ 批量添加完成，直接返回
+                }
+            }
+        }
+        // ⭐ 用户取消或输入单集，继续走下面的单集添加逻辑
+    }
+
+    // ⭐ 单集添加逻辑（用户取消多P询问，或纯BV号输入）
     if (!state.playlistData[defaultBox].some(v => v.bvid === finalBvid)) {
         state.playlistData[defaultBox].push({ bvid: finalBvid, title: displayTitle });
     }
+
     input.value = '';
     renderGroups();
     saveExtensionSettings();
-    if (!state.currentBvid) loadVideo(defaultBox, finalBvid);
 
-    if (needFetchTitle && !customTitle) {
-        fetchVideoTitle(bvid).then(fetchedTitle => {
-            if (fetchedTitle) {
-                const finalTitle = pageNum ? `${fetchedTitle} (P${pageNum})` : fetchedTitle;
-                const item = state.playlistData[defaultBox]?.find(v => v.bvid === finalBvid);
-                if (item) {
-                    item.title = finalTitle;
-                    renderGroups();
-                    saveExtensionSettings();
-                }
-            }
-        });
-    }
+    if (!state.currentBvid) loadVideo(defaultBox, finalBvid);
 }
+
+
 
 function toggleMainPlayerPanel() {
     if (state.isFloating) {

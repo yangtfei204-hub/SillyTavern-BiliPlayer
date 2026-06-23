@@ -1270,11 +1270,6 @@
     border: 1px solid var(--kp-bg);
 }
 
-/* ========== 防止暗色主题穿透 ========== */
-[data-bili-theme="glass-light"] #bili-player-extension-panel,
-[data-bili-theme="glass-light"] .bili-settings-box {
-    background-color: rgba(255, 255, 255, 0.75);
-}
 
 [data-bili-theme="glass-dark"] #bili-player-extension-panel,
 [data-bili-theme="glass-dark"] .bili-settings-box {
@@ -1289,36 +1284,6 @@
 [data-bili-theme="mocha"] #bili-player-extension-panel,
 [data-bili-theme="mocha"] .bili-settings-box {
     background-color: rgba(45, 35, 28, 0.82);
-}
-
-/* ========== 🛡️ 暗色主题视觉修正补丁 ========== */
-
-/* 修复 1：emoji 头像文字用主题文字色（自动适配明暗） */
-.bili-badge-text-face {
-    color: var(--kp-text, #5d6d7e);
-}
-
-/* 修复 2：占位符文字用主题文字色 */
-.bili-ext-placeholder {
-    color: var(--kp-text, #5d6d7e);
-}
-.bili-ext-placeholder p {
-    color: var(--kp-text-muted, #b8a4ad);
-    margin: 4px 0 0;
-}
-
-/* 修复 3：暗色主题 input/select 强制白底 */
-[data-bili-theme="sakura"] .bili-ext-tools input,
-[data-bili-theme="sakura"] .bili-avatar-input,
-[data-bili-theme="sakura"] .bili-settings-select,
-[data-bili-theme="mocha"] .bili-ext-tools input,
-[data-bili-theme="mocha"] .bili-avatar-input,
-[data-bili-theme="mocha"] .bili-settings-select,
-[data-bili-theme="glass-dark"] .bili-ext-tools input,
-[data-bili-theme="glass-dark"] .bili-avatar-input,
-[data-bili-theme="glass-dark"] .bili-settings-select {
-    background-color: rgba(255, 255, 255, 0.95);
-    color: #2c3e50;
 }
 
 /* select option 兼容 */
