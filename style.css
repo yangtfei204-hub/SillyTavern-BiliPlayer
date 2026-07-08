@@ -1684,3 +1684,71 @@
     border-radius: 8px;
     padding: 8px;
 }
+
+/* ========== ⭐ 上下集切换导航栏 ========== */
+.bili-ext-nav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 10px;
+    background: var(--kp-bg);
+    border-bottom: 1.5px solid var(--kp-primary-light);
+    flex-shrink: 0;
+    gap: 6px;
+}
+
+.bili-nav-btn {
+    background: var(--kp-action-primary);
+    color: var(--kp-action-primary-text);
+    border: none;
+    border-radius: 10px;
+    padding: 5px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s;
+    white-space: nowrap;
+    font-family: inherit;
+}
+
+.bili-nav-btn:hover:not(:disabled) {
+    opacity: 0.85;
+    transform: scale(1.03);
+}
+
+.bili-nav-btn:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.bili-nav-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    filter: grayscale(0.5);
+}
+
+.bili-nav-info {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--kp-text-muted);
+    min-width: 40px;
+    text-align: center;
+}
+
+/* 折叠模式下隐藏导航栏 */
+#bili-player-extension-panel.bili-collapsed-mode .bili-ext-nav-bar {
+    display: none;
+}
+
+@media screen and (max-width: 768px) {
+    .bili-ext-nav-bar {
+        padding: 6px 10px;
+    }
+    .bili-nav-btn {
+        font-size: 12px;
+        padding: 7px 14px;
+        min-height: 32px;
+    }
+    .bili-nav-info {
+        font-size: 12px;
+    }
+}

@@ -417,8 +417,56 @@ function loadVideo(groupName, bvid) {
     const src = `https://www.bilibili.com/blackboard/html5mobileplayer.html?bvid=${pureBvid}&p=${targetPage}`;
     safeUpdateIframe(src);
     renderGroups(); 
+    updateNavButtons(); 
     saveExtensionSettings();
 }
+
+// ⭐ 新增：上下集切换功能
+function getAdjacentVideo(direction) {
+    if (!state.currentGroup || !state.currentBvid) return null;
+    const videos = state.playlistData[state.currentGroup];
+    if (!videos || videos.length === 0) return null;
+    
+    const currentIdx = videos.findIndex(v => v.bvid === state.currentBvid);
+    if (currentIdx === -1) return null;
+    
+    const newIdx = currentIdx + direction;
+    if (newIdx < 0 || newIdx >= videos.length) return null;
+    
+    return videos[newIdx];
+}
+
+function playPrev() {
+    const prev = getAdjacentVideo(-1);
+    if (prev) loadVideo(state.currentGroup, prev.bvid);
+}
+
+function playNext() {
+    const next = getAdjacentVideo(1);
+    if (next) loadVideo(state.currentGroup, next.bvid);
+}
+
+function updateNavButtons() {
+    const prevBtn = document.getElementById('bili-ext-prev-btn');
+    const nextBtn = document.getElementById('bili-ext-next-btn');
+    const infoSpan = document.getElementById('bili-ext-nav-info');
+    if (!prevBtn || !nextBtn) return;
+    
+    const videos = state.playlistData[state.currentGroup] || [];
+    const currentIdx = videos.findIndex(v => v.bvid === state.currentBvid);
+    
+    prevBtn.disabled = currentIdx <= 0;
+    nextBtn.disabled = currentIdx === -1 || currentIdx >= videos.length - 1;
+    
+    if (infoSpan) {
+        if (currentIdx >= 0 && videos.length > 0) {
+            infoSpan.textContent = `${currentIdx + 1} / ${videos.length}`;
+        } else {
+            infoSpan.textContent = '';
+        }
+    }
+}
+
 
 // 5. 绘制系列列表（含 ⭐ 重命名功能）
 let renderTimeout = null;
@@ -735,6 +783,11 @@ function createPanel() {
                 <p>小主人请投喂我~</p>
             </div>
         </div>
+        <div class="bili-ext-nav-bar" id="bili-ext-nav-bar">
+            <button id="bili-ext-prev-btn" class="bili-nav-btn" title="上一集" type="button" disabled>⏮ 上一集</button>
+            <span id="bili-ext-nav-info" class="bili-nav-info"></span>
+            <button id="bili-ext-next-btn" class="bili-nav-btn" title="下一集" type="button" disabled>下一集 ⏭</button>
+        </div>
         <div id="bili-ext-lower-wrapper">
             <div class="bili-ext-panel">
                 <div class="bili-ext-tools">
@@ -824,6 +877,10 @@ function setupPanelEventDelegation(panel) {
             e.preventDefault();
             e.stopPropagation();
             openHelpDialog();
+        } else if (id === 'bili-ext-prev-btn') {
+            playPrev();
+        } else if (id === 'bili-ext-next-btn') {
+            playNext();
         }
     });
 
