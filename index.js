@@ -138,6 +138,7 @@ const THEME_COLORS = {
 const state = {
     isCollapsed: false,
     isFloating: false,
+    isActive: true,
     currentGroup: '',
     currentBvid: '',
     savedHeight: '450px',
@@ -2643,6 +2644,81 @@ async function addVideo() {
     if (!state.currentBvid) loadVideo(defaultBox, finalBvid);
 }
 
+// ⭐ 新增：启动/关闭切换
+function togglePowerState() {
+    if (state.isActive) {
+        shutdownPlayer();
+    } else {
+        startupPlayer();
+    }
+    updatePowerButton();
+}
+
+function shutdownPlayer() {
+    state.isActive = false;
+    
+    // 彻底隐藏面板
+    if (panelElement) {
+        panelElement.style.display = 'none';
+    }
+    // 彻底隐藏悬浮球
+    if (floatBadgeElement) {
+        floatBadgeElement.style.display = 'none';
+    }
+    // 停止视频播放，释放资源
+    safeUpdateIframe('');
+    
+    console.log('[BiliPlayer] 🔴 已关闭');
+}
+
+function startupPlayer() {
+    state.isActive = true;
+    
+    if (state.settings.startAsFloating || state.isFloating) {
+        // 以悬浮球模式启动
+        state.isFloating = true;
+        if (panelElement) panelElement.style.display = 'none';
+        createFloatBadge();
+        if (floatBadgeElement) floatBadgeElement.style.display = 'block';
+    } else {
+        // 以完整面板启动
+        state.isFloating = false;
+        if (floatBadgeElement) floatBadgeElement.style.display = 'none';
+        if (panelElement) {
+            panelElement.style.display = 'flex';
+            renderGroups();
+        }
+    }
+    
+    // 恢复上次播放的视频
+    if (state.currentGroup && state.currentBvid && state.playlistData[state.currentGroup]) {
+        loadVideo(state.currentGroup, state.currentBvid);
+    }
+    
+    console.log('[BiliPlayer] 🟢 已启动');
+}
+
+function updatePowerButton() {
+    const btn = document.getElementById('bili-ext-power-btn');
+    const dot = document.getElementById('bili-ext-power-dot');
+    const label = document.getElementById('bili-ext-power-label');
+    if (!btn || !dot || !label) return;
+    
+    if (state.isActive) {
+        btn.style.background = '#52b788';
+        btn.style.boxShadow = 'inset 0 2px 4px rgba(0,0,0,0.1), 0 2px 6px rgba(82,183,136,0.3)';
+        dot.style.left = '28px';
+        label.textContent = '运行中';
+        label.style.color = '#52b788';
+    } else {
+        btn.style.background = '#ccc';
+        btn.style.boxShadow = 'inset 0 2px 4px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.1)';
+        dot.style.left = '3px';
+        label.textContent = '已关闭';
+        label.style.color = '#999';
+    }
+}
+
 
 
 function toggleMainPlayerPanel() {
@@ -2716,17 +2792,72 @@ function initExtension() {
         }
     }
 
-    let attempts = 0;
+        let attempts = 0;
     const injectInterval = setInterval(() => {
         attempts++;
         const extensionSettingsMenu = document.getElementById('extensions_settings');
         if (extensionSettingsMenu && !document.getElementById('bili-ext-nav-toggle')) {
-            extensionSettingsMenu.insertAdjacentHTML('afterbegin', `
-                <div class="inline-drawer" id="bili-ext-nav-toggle" style="margin-bottom: 10px; cursor: pointer; padding: 10px; background: var(--kp-pink-light); border-radius: 10px; border: 2px dashed var(--kp-pink); text-align: center; color: var(--kp-pink-deep); font-weight: bold;">
-                    <span>📺 唤醒 / 隐藏 BiliPlayer 悬浮窗</span>
+                        extensionSettingsMenu.insertAdjacentHTML('afterbegin', `
+                <div class="inline-drawer" id="bili-ext-nav-toggle" style="
+                    margin-bottom: 10px;
+                    padding: 12px 14px;
+                    background: linear-gradient(135deg, var(--kp-primary-light, #fff0f3), var(--kp-bg-soft, #fffbfc));
+                    border-radius: 14px;
+                    border: 2.5px solid var(--kp-border, #ff85a7);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+                    text-align: center;
+                    transition: all 0.3s ease;
+                ">
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 10px;
+                    ">
+                        <span style="
+                            font-size: 12px;
+                            font-weight: 700;
+                            color: var(--kp-text, #5d6d7e);
+                            letter-spacing: 0.5px;
+                        ">📺 BiliPlayer</span>
+                        <button id="bili-ext-power-btn" type="button" style="
+                            position: relative;
+                            width: 52px;
+                            height: 26px;
+                            border: none;
+                            border-radius: 13px;
+                            cursor: pointer;
+                            background: #52b788;
+                            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 2px 6px rgba(82,183,136,0.3);
+                            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                            padding: 0;
+                            outline: none;
+                        "><span id="bili-ext-power-dot" style="
+                            position: absolute;
+                            top: 3px;
+                            left: 28px;
+                            width: 20px;
+                            height: 20px;
+                            background: #ffffff;
+                            border-radius: 50%;
+                            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+                            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                        "></span></button>
+                        <span id="bili-ext-power-label" style="
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #52b788;
+                            min-width: 32px;
+                            transition: color 0.3s;
+                        ">运行中</span>
+                    </div>
                 </div>
             `);
-            document.getElementById('bili-ext-nav-toggle').addEventListener('click', toggleMainPlayerPanel);
+
+
+            const powerBtn = document.getElementById('bili-ext-power-btn');
+            powerBtn.addEventListener('click', togglePowerState);
+            updatePowerButton();
         }
 
         try {
@@ -2736,8 +2867,8 @@ function initExtension() {
                         namedArgumentList: [],
                         unnamedArgumentList: [],
                         returns: 'void',
-                        helpString: '打开或隐藏 BiliPlayer 播放器',
-                        execute: () => { toggleMainPlayerPanel(); return ''; }
+                        helpString: '启动或关闭 BiliPlayer 播放器',
+                        execute: () => { togglePowerState(); return ''; }
                     }
                 );
             }
@@ -2747,6 +2878,7 @@ function initExtension() {
             clearInterval(injectInterval);
         }
     }, 1000);
+
 }
 
 
