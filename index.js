@@ -2556,11 +2556,33 @@ function setupSettingsEvents() {
         radio.onchange = (e) => {
             const newTheme = e.target.value;
             dialog.setAttribute('data-theme', newTheme);
+            
+            // ⭐ 实时预览：应用新主题颜色
             if (!state.settings.customColors) {
+                const colors = THEME_COLORS[newTheme] || THEME_COLORS.pink;
+                const root = document.documentElement;
+            
+                if (colors.primary) root.style.setProperty('--kp-primary', colors.primary);
+                if (colors.primaryLight) root.style.setProperty('--kp-primary-light', colors.primaryLight);
+                if (colors.primaryDeep) root.style.setProperty('--kp-primary-deep', colors.primaryDeep);
+                if (colors.secondary) root.style.setProperty('--kp-secondary', colors.secondary);
+                if (colors.bg) root.style.setProperty('--kp-bg', colors.bg);
+                if (colors.bgSoft) root.style.setProperty('--kp-bg-soft', colors.bgSoft);
+                if (colors.text) root.style.setProperty('--kp-text', colors.text);
+                if (colors.textMuted) root.style.setProperty('--kp-text-muted', colors.textMuted);
+                if (colors.border) root.style.setProperty('--kp-border', colors.border);
+                if (colors.actionPrimary) root.style.setProperty('--kp-action-primary', colors.actionPrimary);
+                if (colors.actionPrimaryText) root.style.setProperty('--kp-action-primary-text', colors.actionPrimaryText);
+                if (colors.actionSecondary) root.style.setProperty('--kp-action-secondary', colors.actionSecondary);
+                if (colors.actionSecondaryText) root.style.setProperty('--kp-action-secondary-text', colors.actionSecondaryText);
+                if (colors.shadow) root.style.setProperty('--kp-shadow', `0 12px 35px ${colors.shadow}`);
+            
+                root.setAttribute('data-bili-theme', newTheme);
                 refreshColorInputs(newTheme);
             }
         };
     });
+
     
     const borderFileInput = dialog.querySelector('#bili-border-image-upload');
     const borderUploadBtn = dialog.querySelector('#bili-border-image-upload-btn');
