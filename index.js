@@ -148,7 +148,8 @@ const state = {
     playlistData: {
         "🐾 未分类": [{ bvid: 'BV1GJ411x7h7', title: '极乐净土' }],
         "✨ 追剧池": []
-    }
+    },
+    collapsedGroups: new Set()  // ⭐ 新增：记录被折叠的分类
 };
 
 // 2. 数据恢复与持久化
@@ -495,16 +496,32 @@ function renderGroups() {
             const details = document.createElement('details');
             details.className = 'bili-details';
 
-            if (state.currentGroup === groupName || allGroupNames.length === 1) {
-                details.open = true;
+            // ⭐ 新逻辑：优先检查用户是否手动折叠过
+            if (state.collapsedGroups.has(groupName)) {
+                details.open = false;  // 用户折叠过，保持折叠
+            } else if (allGroupNames.length === 1) {
+                details.open = true;  // 只有一个分类，默认展开
+            } else if (state.currentGroup === groupName && state.currentBvid) {
+                details.open = true;  // 正在播放的分类自动展开
+            } else {
+                details.open = false;  // 其他情况默认折叠
             }
+
+            // ⭐ 监听用户的展开/折叠操作
+            details.addEventListener('toggle', () => {
+                if (details.open) {
+                    state.collapsedGroups.delete(groupName);  // 展开时移除记录
+                } else {
+                    state.collapsedGroups.add(groupName);  // 折叠时添加记录
+                }
+            });
 
             const summary = document.createElement('summary');
             summary.className = 'bili-summary';
             summary.innerHTML = `
             <span class="bili-arrow">⭐</span>
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-            ${groupName} (${videos.length})
+            ${escapeHtml(groupName)} (${videos.length})
             </span>`;
 
             // ⭐ 分类重命名按钮
@@ -523,7 +540,6 @@ function renderGroups() {
                     alert('已存在同名分类哦~');
                     return;
                 }
-                // 用新名字重建分类（保留顺序）
                 const newPlaylistData = {};
                 Object.keys(state.playlistData).forEach(key => {
                     if (key === groupName) {
@@ -533,13 +549,62 @@ function renderGroups() {
                     }
                 });
                 state.playlistData = newPlaylistData;
-                // 同步更新当前分类记录
                 if (state.currentGroup === groupName) {
                     state.currentGroup = trimmed;
                 }
                 renderGroups();
                 saveExtensionSettings();
             };
+
+            // ⭐ 分类上下移动按钮
+            if (allGroupNames.length > 1) {
+                const groupIdx = allGroupNames.indexOf(groupName);
+                if (groupIdx > 0) {
+                const upBtn = document.createElement('span');
+                upBtn.className = 'bili-move-btn';
+                upBtn.textContent = '↑';
+                upBtn.title = '上移';
+                upBtn.style.marginRight = '2px';
+                upBtn.onclick = (e) => {
+                   e.preventDefault();
+                   e.stopPropagation();
+                    const keys = Object.keys(state.playlistData);
+                    const idx = keys.indexOf(groupName);
+                    if (idx > 0) {
+                        [keys[idx - 1], keys[idx]] = [keys[idx], keys[idx - 1]];
+                        const newData = {};
+                        keys.forEach(k => { newData[k] = state.playlistData[k]; });
+                        state.playlistData = newData;
+                        renderGroups();
+                        saveExtensionSettings();
+                   }
+                };
+                summary.appendChild(upBtn);
+            }
+            if (groupIdx < allGroupNames.length - 1) {
+                const downBtn = document.createElement('span');
+                downBtn.className = 'bili-move-btn';
+                downBtn.textContent = '↓';
+                downBtn.title = '下移';
+                downBtn.style.marginRight = '2px';
+                downBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const keys = Object.keys(state.playlistData);
+                    const idx = keys.indexOf(groupName);
+                    if (idx < keys.length - 1) {
+                        [keys[idx], keys[idx + 1]] = [keys[idx + 1], keys[idx]];
+                        const newData = {};
+                        keys.forEach(k => { newData[k] = state.playlistData[k]; });
+                        state.playlistData = newData;
+                        renderGroups();
+                        saveExtensionSettings();
+                    }
+                };
+                summary.appendChild(downBtn);
+            }
+        }
+
             summary.appendChild(groupRename);
 
             const groupDel = document.createElement('span');
@@ -570,10 +635,14 @@ function renderGroups() {
             const ul = document.createElement('ul');
             ul.style.listStyle = 'none';
             ul.style.padding = '0 6px 6px';
+            ul.dataset.group = groupName;
+            ul.className = 'bili-sortable-list';
 
             videos.forEach(item => {
                 const li = document.createElement('li');
                 li.className = 'bili-item';
+                li.draggable = true;
+                li.dataset.bvid = item.bvid;
 
                 if (state.currentGroup === groupName && state.currentBvid === item.bvid) {
                     li.classList.add('active');
@@ -588,7 +657,6 @@ function renderGroups() {
                     e.stopPropagation();
                     loadVideo(groupName, item.bvid); 
                 };
-                // ⭐ 双击改名
                 title.ondblclick = (e) => {
                     e.stopPropagation();
                     e.preventDefault();
@@ -607,27 +675,27 @@ function renderGroups() {
                 };
                 li.appendChild(renameBtn);
 
-                const move = document.createElement('select');
-                move.className = 'bili-selector';
-                move.innerHTML = '<option disabled selected>移动</option>';
+                // ⭐ 移动按钮（点击弹出面板选分类）
+                const moveBtn = document.createElement('span');
+                moveBtn.className = 'bili-move-btn';
+                moveBtn.textContent = '↗';
+                moveBtn.title = '移动到其他分类';
+                moveBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    const targetGroup = await showMoveDialog(item, groupName);
+                    if (!targetGroup) return;
 
-                allGroupNames.forEach(name => {
-                    if (name === groupName) return;
-                    move.innerHTML += `<option>${name}</option>`;
-                });
-
-                move.onchange = (e) => {
-                    const target = e.target.value;
                     state.playlistData[groupName] = state.playlistData[groupName].filter(v => v.bvid !== item.bvid);
-                    state.playlistData[target].push(item);
+                    state.playlistData[targetGroup].push(item);
 
                     if (state.currentBvid === item.bvid) {
-                        state.currentGroup = target;
+                        state.currentGroup = targetGroup;
                     }
                     renderGroups();
                     saveExtensionSettings();
+                    showToast(`✅ 已移动到「${targetGroup}」`);
                 };
-                li.appendChild(move);
+                li.appendChild(moveBtn);
 
                 const del = document.createElement('span');
                 del.className = 'bili-del';
@@ -646,18 +714,462 @@ function renderGroups() {
                     saveExtensionSettings();
                 };
                 li.appendChild(del);
+
+                // ⭐ 拖拽排序事件
+                li.addEventListener('dragstart', (e) => {
+                    if (li.classList.contains('bili-renaming')) {
+                        e.preventDefault();
+                        return;
+                    }
+                    e.stopPropagation(); // ⭐ 阻止冒泡到 details
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', item.bvid);
+                    li.classList.add('bili-dragging');
+                    li.dataset.dragGroup = groupName;
+                });
+                li.addEventListener('dragend', () => {
+                    li.classList.remove('bili-dragging');
+                    document.querySelectorAll('.bili-drag-over').forEach(el => el.classList.remove('bili-drag-over'));
+                });
+                li.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation(); 
+                    e.dataTransfer.dropEffect = 'move';
+                    const dragging = ul.querySelector('.bili-dragging');
+                    if (dragging && dragging !== li) {
+                        // ✅ 使用 requestAnimationFrame 防止频繁重绘
+                        if (!li._dragOverScheduled) {
+                            li._dragOverScheduled = true;
+                            requestAnimationFrame(() => {
+                                ul.querySelectorAll('.bili-drag-over').forEach(el => {
+                                    if (el !== li) el.classList.remove('bili-drag-over');
+                                });
+                                li.classList.add('bili-drag-over');
+                                li._dragOverScheduled = false;
+                            });
+                        }
+                    }
+                });
+                    
+                li.addEventListener('dragleave', () => {
+                    li.classList.remove('bili-drag-over');
+                });
+                li.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    li.classList.remove('bili-drag-over');
+                    const dragBvid = e.dataTransfer.getData('text/plain');
+                    if (!dragBvid || dragBvid === item.bvid) return;
+
+                    const videos = state.playlistData[groupName];
+                    if (!videos) return;
+
+                    const fromIdx = videos.findIndex(v => v.bvid === dragBvid);
+                    const toIdx = videos.findIndex(v => v.bvid === item.bvid);
+                    if (fromIdx === -1 || toIdx === -1) return;
+
+                    const [moved] = videos.splice(fromIdx, 1);
+                    videos.splice(toIdx, 0, moved);
+
+                    renderGroups();
+                    updateNavButtons();
+                    saveExtensionSettings();
+                });
                 ul.appendChild(li);
             });
 
+            
             details.appendChild(ul);
             fragment.appendChild(details);
         });
 
         container.appendChild(fragment);
+        setupGroupDragSort(container);
         saveExtensionSettings();
     }, 30);
 }
 
+// ⭐ 移动端触摸拖拽排序
+function setupTouchSortable(ul, groupName) {
+    let dragItem = null;
+    let dragClone = null;
+    let startY = 0;
+    let startX = 0;
+    let longPressTimer = null;
+    let isDragging = false;
+    const LONG_PRESS_MS = 400;
+    const MOVE_THRESHOLD = 8;
+
+    ul.addEventListener('touchstart', (e) => {
+        const li = e.target.closest('.bili-item');
+        if (!li || li.classList.contains('bili-renaming')) return;
+        if (e.target.closest('.bili-del') || e.target.closest('.bili-selector') || e.target.closest('.bili-rename') || e.target.closest('input')) return;
+
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+
+        longPressTimer = setTimeout(() => {
+            isDragging = true;
+            dragItem = li;
+            li.classList.add('bili-dragging');
+
+            // 创建拖拽影子
+            dragClone = li.cloneNode(true);
+            dragClone.className = 'bili-drag-clone';
+            const rect = li.getBoundingClientRect();
+            dragClone.style.cssText = `
+                position: fixed;
+                left: ${rect.left}px;
+                top: ${rect.top}px;
+                width: ${rect.width}px;
+                height: ${rect.height}px;
+                z-index: 999999;
+                pointer-events: none;
+                opacity: 0.85;
+                transform: scale(1.03);
+                transform: scale(1.03) translateZ(0);
+                box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+                border-radius: 8px;
+                background: var(--kp-bg);
+                transition: none;
+                will-change: transform; 
+            `;
+            document.body.appendChild(dragClone);
+        }, LONG_PRESS_MS);
+    }, { passive: true });
+
+    ul.addEventListener('touchmove', (e) => {
+        const touch = e.touches[0];
+
+        // 未进入拖拽状态时，如果手指移动超过阈值，取消长按
+        if (!isDragging) {
+            if (Math.abs(touch.clientX - startX) > MOVE_THRESHOLD || Math.abs(touch.clientY - startY) > MOVE_THRESHOLD) {
+                clearTimeout(longPressTimer);
+            }
+            return;
+        }
+
+        e.preventDefault();
+
+        // 移动影子
+        if (dragClone) {
+            const rect = dragItem.getBoundingClientRect();
+            dragClone.style.top = (touch.clientY - rect.height / 2) + 'px';
+            dragClone.style.left = rect.left + 'px';
+        }
+
+        // 找到手指下方的目标 li
+        const target = document.elementFromPoint(touch.clientX, touch.clientY);
+        const targetLi = target?.closest('.bili-item');
+
+        // 清除旧高亮
+        ul.querySelectorAll('.bili-drag-over').forEach(el => el.classList.remove('bili-drag-over'));
+
+        if (targetLi && targetLi !== dragItem && ul.contains(targetLi)) {
+            targetLi.classList.add('bili-drag-over');
+        }
+    }, { passive: false });
+
+    ul.addEventListener('touchend', () => {
+        clearTimeout(longPressTimer);
+
+        if (!isDragging || !dragItem) {
+            isDragging = false;
+            dragItem = null;
+            return;
+        }
+
+        // 找到最终目标
+        const overItem = ul.querySelector('.bili-drag-over');
+        if (overItem && overItem !== dragItem) {
+            const fromBvid = dragItem.dataset.bvid;
+            const toBvid = overItem.dataset.bvid;
+            const videos = state.playlistData[groupName];
+
+            if (videos && fromBvid && toBvid) {
+                const fromIdx = videos.findIndex(v => v.bvid === fromBvid);
+                const toIdx = videos.findIndex(v => v.bvid === toBvid);
+                if (fromIdx !== -1 && toIdx !== -1) {
+                    const [moved] = videos.splice(fromIdx, 1);
+                    videos.splice(toIdx, 0, moved);
+                    saveExtensionSettings();
+                }
+            }
+        }
+
+        // 清理
+        dragItem.classList.remove('bili-dragging');
+        ul.querySelectorAll('.bili-drag-over').forEach(el => el.classList.remove('bili-drag-over'));
+        if (dragClone) { dragClone.remove(); dragClone = null; }
+        isDragging = false;
+        dragItem = null;
+
+        renderGroups();
+        updateNavButtons();
+    }, { passive: true });
+
+    ul.addEventListener('touchcancel', () => {
+        clearTimeout(longPressTimer);
+        if (dragItem) dragItem.classList.remove('bili-dragging');
+        ul.querySelectorAll('.bili-drag-over').forEach(el => el.classList.remove('bili-drag-over'));
+        if (dragClone) { dragClone.remove(); dragClone = null; }
+        isDragging = false;
+        dragItem = null;
+    }, { passive: true });
+}
+
+// ⭐ 分类拖拽排序（仅桌面端）
+function setupGroupDragSort(container) {
+    const details = container.querySelectorAll('.bili-details');
+
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+        details.forEach(detail => {
+            detail.draggable = false;
+            detail.removeAttribute('draggable');
+        });
+        return; 
+    }
+    
+    details.forEach(detail => {
+        const summary = detail.querySelector('.bili-summary');
+        if (!summary) return;
+        
+        detail.draggable = true;
+        
+        detail.addEventListener('dragstart', (e) => {
+            if (!e.target.closest('.bili-summary') && e.target !== detail) {
+                e.preventDefault();
+                return;
+            }
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/bili-group', detail.querySelector('.bili-summary span:nth-child(2)')?.textContent?.replace(/\s*\(\d+\)\s*$/, '').trim() || '');
+            detail.classList.add('bili-group-dragging');
+        });
+        
+        detail.addEventListener('dragend', () => {
+            detail.classList.remove('bili-group-dragging');
+            // ✅ 强制清理所有高亮（包括拖到外面的情况）
+            document.querySelectorAll('.bili-group-drag-over').forEach(el => el.classList.remove('bili-group-drag-over'));
+        });
+        
+        detail.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+            const dragging = container.querySelector('.bili-group-dragging');
+            if (dragging && dragging !== detail) {
+                if (!detail._dragOverScheduled) {
+                    detail._dragOverScheduled = true;
+                    requestAnimationFrame(() => {
+                        container.querySelectorAll('.bili-group-drag-over').forEach(el => {
+                            if (el !== detail) el.classList.remove('bili-group-drag-over');
+                        });
+                        detail.classList.add('bili-group-drag-over');
+                        detail._dragOverScheduled = false;
+                    });
+                }
+            }
+        });
+        
+        detail.addEventListener('dragleave', (e) => {
+            // ✅ 只在真正离开元素时清理（避免子元素触发）
+            if (!detail.contains(e.relatedTarget)) {
+                detail.classList.remove('bili-group-drag-over');
+            }
+        });
+        
+        detail.addEventListener('drop', (e) => {
+            e.preventDefault();
+            detail.classList.remove('bili-group-drag-over');
+            const fromGroupRaw = e.dataTransfer.getData('text/bili-group');
+            if (!fromGroupRaw) return;
+            
+            const allGroupNames = Object.keys(state.playlistData);
+            const detailsList = [...container.querySelectorAll('.bili-details')];
+            const fromIdx = detailsList.indexOf(container.querySelector('.bili-group-dragging'));
+            const toIdx = detailsList.indexOf(detail);
+            
+            if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+            
+            const keys = Object.keys(state.playlistData);
+            const [movedKey] = keys.splice(fromIdx, 1);
+            keys.splice(toIdx, 0, movedKey);
+            
+            const newData = {};
+            keys.forEach(k => { newData[k] = state.playlistData[k]; });
+            state.playlistData = newData;
+            
+            renderGroups();
+            saveExtensionSettings();
+        });
+    });
+    
+    // ⭐ 容器级清理：拖出整个列表区域时清除所有高亮
+    container.addEventListener('dragleave', (e) => {
+        if (!container.contains(e.relatedTarget)) {
+            container.querySelectorAll('.bili-group-drag-over').forEach(el => {
+                el.classList.remove('bili-group-drag-over');
+            });
+        }
+    });
+    
+    // ⭐ 全局兜底清理：拖出窗口时清理（防止拖到浏览器外）
+    document.addEventListener('dragover', (e) => {
+        const isDraggingGroup = container.querySelector('.bili-group-dragging');
+        if (isDraggingGroup) {
+            const rect = container.getBoundingClientRect();
+            if (e.clientX < rect.left || e.clientX > rect.right ||
+                e.clientY < rect.top || e.clientY > rect.bottom) {
+                container.querySelectorAll('.bili-group-drag-over').forEach(el => {
+                    el.classList.remove('bili-group-drag-over');
+                });
+            }
+        }
+    });
+}
+
+
+function setupGroupTouchSort(container) {
+    let dragDetail = null;
+    let dragClone = null;
+    let startY = 0;
+    let startX = 0;
+    let longPressTimer = null;
+    let isDragging = false;
+    let lastOverDetail = null;
+    const LONG_PRESS_MS = 500;
+    const MOVE_THRESHOLD = 8;
+
+    container.addEventListener('touchstart', (e) => {
+        const summary = e.target.closest('.bili-summary');
+        // 只允许从分类标题栏触发，排除视频条目区域
+        if (!summary) return;
+        // 如果触发点在视频列表内，不处理
+        if (e.target.closest('.bili-sortable-list') || e.target.closest('.bili-item')) return;
+        const detail = summary.closest('.bili-details');
+        if (!detail) return;
+        // 不在按钮上触发
+        if (e.target.closest('.bili-del') || e.target.closest('.bili-rename')) return;
+
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+
+        longPressTimer = setTimeout(() => {
+            isDragging = true;
+            dragDetail = detail;
+            detail.classList.add('bili-group-dragging');
+
+            dragClone = document.createElement('div');
+            dragClone.className = 'bili-drag-clone';
+            const rect = detail.getBoundingClientRect();
+            dragClone.textContent = summary.textContent.trim();
+            dragClone.style.cssText = `
+                position: fixed;
+                left: ${rect.left}px;
+                top: ${rect.top}px;
+                width: ${rect.width}px;
+                height: 40px;
+                z-index: 999999;
+                pointer-events: none;
+                opacity: 0.85;
+                transform: scale(1.02);
+                box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+                border-radius: 12px;
+                background: var(--kp-bg);
+                display: flex;
+                align-items: center;
+                padding: 0 12px;
+                font-size: 12px;
+                font-weight: 700;
+                color: var(--kp-text);
+                border: 2px solid var(--kp-primary-deep);
+            `;
+            document.body.appendChild(dragClone);
+        }, LONG_PRESS_MS);
+    }, { passive: true });
+
+    container.addEventListener('touchmove', (e) => {
+        const touch = e.touches[0];
+        if (!isDragging) {
+            if (Math.abs(touch.clientX - startX) > MOVE_THRESHOLD || Math.abs(touch.clientY - startY) > MOVE_THRESHOLD) {
+                clearTimeout(longPressTimer);
+            }
+            return;
+        }
+        e.preventDefault();
+
+        if (dragClone) {
+            // 影子跟随手指，锁定水平位置避免飘
+            const containerRect = container.getBoundingClientRect();
+            dragClone.style.top = (touch.clientY - 20) + 'px';
+            dragClone.style.left = containerRect.left + 'px';
+            dragClone.style.width = containerRect.width + 'px';
+        }
+
+        // 用坐标遍历判断，不依赖 elementFromPoint
+        container.querySelectorAll('.bili-group-drag-over').forEach(el => el.classList.remove('bili-group-drag-over'));
+
+        lastOverDetail = null;
+        const allDetails = container.querySelectorAll('.bili-details');
+        for (const d of allDetails) {
+            if (d === dragDetail) continue;
+            const summaryEl = d.querySelector('.bili-summary');
+            if (!summaryEl) continue;
+            const rect = summaryEl.getBoundingClientRect();
+            if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+                d.classList.add('bili-group-drag-over');
+                lastOverDetail = d;
+                break;
+            }
+        }
+    }, { passive: false });
+
+    container.addEventListener('touchend', () => {
+        clearTimeout(longPressTimer);
+        if (!isDragging || !dragDetail) {
+            isDragging = false;
+            dragDetail = null;
+            return;
+        }
+
+        const overDetail = lastOverDetail;
+        if (overDetail && overDetail !== dragDetail) {
+            const detailsList = [...container.querySelectorAll('.bili-details')];
+            const fromIdx = detailsList.indexOf(dragDetail);
+            const toIdx = detailsList.indexOf(overDetail);
+
+            if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
+                const keys = Object.keys(state.playlistData);
+                const [movedKey] = keys.splice(fromIdx, 1);
+                keys.splice(toIdx, 0, movedKey);
+
+                const newData = {};
+                keys.forEach(k => { newData[k] = state.playlistData[k]; });
+                state.playlistData = newData;
+                saveExtensionSettings();
+            }
+        }
+
+        dragDetail.classList.remove('bili-group-dragging');
+        container.querySelectorAll('.bili-group-drag-over').forEach(el => el.classList.remove('bili-group-drag-over'));
+        if (dragClone) { dragClone.remove(); dragClone = null; }
+        isDragging = false;
+        dragDetail = null;
+
+        renderGroups();
+    }, { passive: true });
+
+    container.addEventListener('touchcancel', () => {
+        clearTimeout(longPressTimer);
+        if (dragDetail) dragDetail.classList.remove('bili-group-dragging');
+        container.querySelectorAll('.bili-group-drag-over').forEach(el => el.classList.remove('bili-group-drag-over'));
+        if (dragClone) { dragClone.remove(); dragClone = null; }
+        isDragging = false;
+        dragDetail = null;
+    }, { passive: true });
+}
 
 // ⭐ 新增：让某个视频项进入"重命名"状态
 function startRenameItem(liElement, groupName, item) {
@@ -1076,9 +1588,19 @@ function exitFloatingState() {
         floatBadgeElement.style.display = 'none';
     }
     panelElement.style.display = 'flex';
+    
+    // ⭐ 修改：只渲染列表，不自动加载视频
     renderGroups();
+    
+    // ⭐ 如果之前有播放记录且视频区是空的，才恢复播放
+    const currentFrame = document.getElementById('bili-ext-frame');
+    if (state.currentGroup && state.currentBvid && !currentFrame) {
+        loadVideo(state.currentGroup, state.currentBvid);
+    }
+    
     saveExtensionSettings();
 }
+
 
 // 10. 绘制小猫耳悬浮球
 function createFloatBadge(customLeft = null, customTop = null) {
@@ -1228,9 +1750,6 @@ function applyBadgeBorder() {
     }
 }
 
-
-
-// ⭐ 新增：使用说明弹窗
 function openHelpDialog() {
     if (document.getElementById('bili-ext-help-dialog')) {
         closeHelpDialog();
@@ -1247,52 +1766,121 @@ function openHelpDialog() {
         <div class="bili-help-mask"></div>
         <div class="bili-help-box">
             <div class="bili-help-header">
-                <span>📖 使用说明</span>
+                <span>📖 BiliPlayer 使用指南</span>
                 <button class="bili-help-close" type="button">×</button>
             </div>
             <div class="bili-help-body">
-                <!-- 添加视频 -->
+
+                <!-- 快速上手 -->
                 <div class="bili-help-section">
-                    <div class="bili-help-title">🎬 添加视频</div>
+                    <div class="bili-help-title">🚀 三步快速上手</div>
                     <div class="bili-help-content">
-                        <b>✨ 支持的链接格式：</b>
+                        <ol>
+                            <li><b>创建分类：</b>在「新分类/系列名称」输入框填入名字（如「追番」「电影」），点击<b>「新建系列」</b></li>
+                            <li><b>添加视频：</b>在下方输入框粘贴 B 站视频链接或 BV 号，点击<b>「投喂」</b></li>
+                            <li><b>开始播放：</b>点击列表中任意视频名即可播放</li>
+                        </ol>
+                        
+                        <b>💡 温馨提示：</b>
                         <ul>
-                            <li><b>纯 BV 号：</b><code>BV1SPQeBuE2d</code> — 直接添加单集，不询问多P</li>
-                            <li><b>完整视频链接：</b><code>https://www.bilibili.com/video/BV1xxx</code> — 会弹窗询问是否为多P合集</li>
-                            <li><b>分P链接：</b><code>https://...video/BV1xxx?p=2</code> — 自动识别第几集</li>
-                            <li><b>带追踪参数：</b><code>https://...?vd_source=xxx</code> — 自动去除杂项参数</li>
-                            <li><b>B站短链：</b><code>https://b23.tv/abc123</code> — 自动展开（可能受 CORS 限制）</li>
+                            <li>第一次使用时，如果还没有分类，添加视频会自动创建「🐾 未分类」</li>
+                            <li>面板可以随意拖拽移动，右下角可以调整大小（桌面端）</li>
+                            <li>点击右上角 <b>×</b> 会缩成可爱的猫耳悬浮球，再次点击即可恢复</li>
                         </ul>
 
-                        <b>📝 自定义视频名称：</b>
-                        <div class="bili-help-code">链接或BV号 + 空格 + 自定义名字</div>
-                        例如：
+                        <b>🎯 核心功能一览：</b>
+                        <ul>
+                            <li>🎨 10 套预设主题 + 自定义配色 + 背景图片（含动图）</li>
+                            <li>📂 分类管理：拖拽排序、重命名、上下移动、删除</li>
+                            <li>🎞️ 视频管理：双击改名、拖拽排序、批量添加、分类间移动</li>
+                            <li>⏮️ 上下集切换：视频区下方导航栏，自动识别播放位置</li>
+                            <li>🐱 悬浮球模式：缩成猫耳球，支持自定义头像和外框</li>
+                            <li>💾 数据自动保存 + 导出导入备份（JSON 格式）</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- 添加视频详解 -->
+                <div class="bili-help-section">
+                    <div class="bili-help-title">🎬 添加视频（详细说明）</div>
+                    <div class="bili-help-content">
+                        <h4>✨ 支持的输入格式</h4>
+                        <ul>
+                            <li><b>纯 BV 号：</b><code>BV1SPQeBuE2d</code></li>
+                            <li><b>完整视频链接：</b><code>https://www.bilibili.com/video/BV1xxx</code></li>
+                            <li><b>分P链接：</b><code>https://www.bilibili.com/video/BV1xxx?p=3</code></li>
+                            <li><b>带追踪参数的链接：</b><code>https://...?vd_source=xxx</code>（自动过滤）</li>
+                            <li><b>B站短链：</b><code>https://b23.tv/abc123</code>（自动展开，可能受 CORS 限制）</li>
+                        </ul>
+
+                        <h4>📝 自定义视频名称</h4>
+                        <p>在链接或 BV 号后面加一个<b>空格</b>，再写上自定义名字：</p>
                         <div class="bili-help-code">BV1SPQeBuE2d 蜡笔小新第一集</div>
-                        <div class="bili-help-code">https://...BV1xxx 猫和老鼠</div>
+                        <div class="bili-help-code">https://www.bilibili.com/video/BV1xxx 猫和老鼠</div>
+                        <p>不写自定义名字时，默认用 BV 号作为标题。</p>
 
-                        <b>📂 选择目标分类：</b><br>
-                        粘贴链接后，如果有<b>多个分类</b>，会先弹窗让你选择：
+                        <h4>📂 添加流程说明</h4>
+                        <p>粘贴内容后点击「投喂」，根据情况会有不同的流程：</p>
+
+                        <h5>情况一：纯 BV 号</h5>
                         <ul>
-                            <li>输入序号（如 <code>1</code>、<code>2</code>）选择分类</li>
-                            <li>点击「取消」或输入无效值 → 使用当前正在播放的分类</li>
-                            <li>只有一个分类时不会弹窗，直接添加</li>
+                            <li>只有 1 个分类 → 直接添加，不弹窗</li>
+                            <li>有多个分类 → 弹窗选择目标分类 → 添加完成</li>
+                            <li><b>不会询问多P</b>，始终当作单集处理</li>
                         </ul>
 
-                        <b>🎯 批量添加多P视频：</b><br>
-                        粘贴<b>完整链接</b>后，选完分类会继续询问：
+                        <h5>情况二：完整视频链接</h5>
                         <ul>
-                            <li>如果是单集视频 → 点<b>「取消」</b></li>
-                            <li>如果是多P合集 → 输入总集数（如 <code>130</code>），确认后自动批量添加</li>
-                            <li>批量添加的标题格式：<code>自定义名字 - P1</code>、<code>自定义名字 - P2</code>...</li>
-                            <li>没有自定义名字时用 BV 号：<code>BV1xxx - P1</code>、<code>BV1xxx - P2</code>...</li>
-                            <li>不确定集数？可以先打开视频看播放列表，再回来输入</li>
+                            <li>只有 1 个分类 → 弹窗询问是否多P合集</li>
+                            <li>有多个分类 → 弹窗选择分类 → 接着询问是否多P合集</li>
                         </ul>
 
-                        <b>⚠️ 注意事项：</b>
+                        <h4>🎯 批量添加多P合集</h4>
+                        <p>使用<b>完整链接</b>添加时，选完分类后会进入第二步：</p>
                         <ul>
-                            <li>纯 BV 号不会询问多P，直接添加为单集</li>
-                            <li>番剧链接暂不支持，请复制播放页的 BV 号</li>
-                            <li>短链展开可能受浏览器 CORS 限制，建议直接用完整链接</li>
+                            <li>如果是单集视频 → 点<b>「添加单集」</b>按钮</li>
+                            <li>如果是多P合集 → 填写<b>起始集数</b>（默认为 1）和<b>结束集数</b>（如 24、130），点<b>「批量添加」</b></li>
+                            <li>批量添加后标题格式：<code>自定义名字 - P1</code>、<code>自定义名字 - P2</code> ...</li>
+                            <li>没写自定义名字时：<code>BV1xxx - P1</code>、<code>BV1xxx - P2</code> ...</li>
+                        </ul>
+                        <div class="bili-help-code">示例：粘贴「https://www.bilibili.com/video/BV1xxx 蜡笔小新」→ 选分类 → 起始集 1，结束集 130 → 批量添加</div>
+
+                        <h4>⚠️ 注意事项</h4>
+                        <ul>
+                            <li>如果想让纯 BV 号也询问多P，请使用完整链接格式</li>
+                            <li>番剧链接（<code>/bangumi/play/</code>）暂不支持，请复制播放页的 BV 号</li>
+                            <li>短链展开可能受浏览器安全策略限制，失败时请改用完整链接</li>
+                            <li>同一分类下不会重复添加相同 BV 号的视频</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- 播放与切换 -->
+                <div class="bili-help-section">
+                    <div class="bili-help-title">▶️ 播放与上下集切换</div>
+                    <div class="bili-help-content">
+                        <h4>播放视频</h4>
+                        <ul>
+                            <li>单击列表中任意视频名 → 立即开始播放</li>
+                            <li>当前正在播放的视频会高亮显示（左侧有彩色竖条）</li>
+                            <li>视频区采用 B 站移动端播放器，支持暂停、进度条、全屏等基本操作</li>
+                        </ul>
+
+                        <h4>上下集切换</h4>
+                        <ul>
+                            <li>视频区下方有<b>「⏮ 上一集」</b>和<b>「下一集 ⏭」</b>按钮</li>
+                            <li>中间显示当前集数位置（如 <code>3 / 24</code>）</li>
+                            <li>到达第一集时「上一集」按钮自动变灰</li>
+                            <li>到达最后一集时「下一集」按钮自动变灰</li>
+                            <li>切集范围仅限<b>当前分类</b>内的视频列表</li>
+                        </ul>
+
+                        <h4>折叠模式</h4>
+                        <ul>
+                            <li>点击标题栏的 <b>_</b> 按钮 → 隐藏下方列表区，只保留视频画面</li>
+                            <li>折叠后面板变为仅横向可调整大小</li>
+                            <li>再次点击 <b>▢</b> 按钮恢复完整面板</li>
+                            <li>折叠模式下上下集导航栏也会隐藏</li>
                         </ul>
                     </div>
                 </div>
@@ -1301,67 +1889,114 @@ function openHelpDialog() {
                 <div class="bili-help-section">
                     <div class="bili-help-title">📂 分类管理</div>
                     <div class="bili-help-content">
-                        <b>创建新分类：</b>
-                        <ol>
-                            <li>在「新分类/系列名称」输入框填入名字（如「动画」「电影」「追剧池」）</li>
-                            <li>点击<b>「新建系列」</b>按钮</li>
-                            <li>新分类会立即显示在下方列表中</li>
-                        </ol>
-
-                        <b>重命名分类：</b>
+                        <h4>创建分类</h4>
                         <ul>
-                            <li>鼠标<b>悬停</b>到分类名上 → 右侧出现 <b>✎</b> 笔形按钮 → 点击</li>
-                            <li>输入新名字 → 点击确定</li>
+                            <li>在顶部「新分类/系列名称」输入框中填入名字</li>
+                            <li>点击<b>「新建系列」</b>，新分类立即出现在列表中</li>
+                            <li>分类名支持 Emoji，如「🎬 电影」「📺 追番」「🎵 音乐」</li>
+                            <li>不能创建同名分类</li>
+                        </ul>
+
+                        <h4>展开/折叠分类</h4>
+                        <ul>
+                            <li>点击分类名（或左侧 ⭐ 箭头）→ 展开/折叠该分类的视频列表</li>
+                            <li>当前正在播放的分类会自动展开</li>
+                            <li>只有一个分类时默认展开</li>
+                        </ul>
+
+                        <h4>重命名分类</h4>
+                        <ul>
+                            <li>鼠标悬停分类标题 → 右侧出现 <b>✎</b> 笔形按钮 → 点击</li>
+                            <li>在弹出的输入框中填入新名字 → 确认</li>
                             <li>分类下的所有视频会保留，正在播放的视频不受影响</li>
                             <li>不能改成已存在的分类名</li>
                         </ul>
 
-                        <b>移动视频到其他分类：</b>
+                        <h4>调整分类顺序</h4>
                         <ul>
-                            <li>点击视频右侧的<b>「移动」</b>下拉框</li>
-                            <li>选择目标分类</li>
-                            <li>视频会立即转移到新分类下</li>
+                            <li>每个分类标题右侧有 <b>↑</b> <b>↓</b> 按钮，点击即可上移/下移</li>
+                            <li>桌面端支持<b>拖拽排序</b>：按住分类标题拖动到目标位置</li>
+                            <li>移动端暂不支持分类拖拽（视频拖拽正常）</li>
                         </ul>
 
-                        <b>删除分类或视频：</b>
+                        <h4>删除分类</h4>
                         <ul>
-                            <li>点击分类名右侧的 <b>×</b> → 删除整个分类（有视频时会二次确认）</li>
-                            <li>点击视频名右侧的 <b>×</b> → 删除单个视频</li>
-                            <li>删除操作无法撤销，请谨慎操作</li>
-                        </ul>
-
-                        <b>分类展开/折叠：</b>
-                        <ul>
-                            <li>点击分类名前的 <b>⭐</b> → 展开/折叠视频列表</li>
-                            <li>当前正在播放的分类会自动展开</li>
+                            <li>点击分类标题最右侧的 <b>×</b> 按钮</li>
+                            <li>如果分类内有视频，会二次确认</li>
+                            <li>删除后无法恢复，请谨慎操作</li>
+                            <li>如果删除的是正在播放的分类，播放会停止</li>
                         </ul>
                     </div>
                 </div>
 
-                <!-- 重命名视频 -->
+                <!-- 视频管理 -->
                 <div class="bili-help-section">
-                    <div class="bili-help-title">✏️ 重命名视频</div>
+                    <div class="bili-help-title">🎞️ 视频管理</div>
                     <div class="bili-help-content">
-                        <b>两种进入重命名模式的方式：</b>
+                        <h4>重命名视频（两种方式）</h4>
                         <ul>
-                            <li><b>方式一：</b>鼠标<b>悬停</b>到视频名上 → 右侧出现 <b>✎</b> 笔形按钮 → 点击</li>
-                            <li><b>方式二：</b>直接<b>双击</b>视频名</li>
+                            <li><b>方式一：</b>鼠标悬停视频名 → 右侧出现 <b>✎</b> → 点击进入编辑</li>
+                            <li><b>方式二：</b>直接<b>双击</b>视频名进入编辑</li>
+                            <li>编辑时：按 <kbd>Enter</kbd> 保存 / 按 <kbd>Esc</kbd> 取消 / 点击外部自动保存</li>
+                            <li>最多输入 50 个字符，支持 Emoji 和特殊符号</li>
                         </ul>
 
-                        <b>编辑操作：</b>
+                        <h4>移动视频到其他分类</h4>
                         <ul>
-                            <li>输入框会自动聚焦并全选当前名字</li>
-                            <li>输入新名字（最多 50 个字符）</li>
-                            <li>按<b> Enter</b> → 保存修改</li>
-                            <li>按<b> Esc</b> → 取消修改</li>
-                            <li>点击输入框外部 → 自动保存修改</li>
+                            <li>鼠标悬停视频 → 出现 <b>↗</b> 移动按钮 → 点击</li>
+                            <li>弹出分类选择面板，点击目标分类即可完成移动</li>
+                            <li>如果移动的是正在播放的视频，播放状态会跟随到新分类</li>
                         </ul>
 
-                        <b>💡 小技巧：</b>
+                        <h4>调整视频顺序</h4>
                         <ul>
-                            <li>批量添加的视频默认标题是「名字 - P1」格式，可以改成更直观的名字</li>
-                            <li>支持 Emoji 和特殊符号（如 🎬、⭐、第一话）</li>
-                            <li>移动端也支持重命名，虚拟键盘不会误触</li>
+                            <li>桌面端：直接<b>拖拽</b>视频条目到目标位置</li>
+                            <li>移动端：<b>长按</b>视频条目约 0.4 秒，进入拖拽模式后移动到目标位置</li>
+                            <li>拖拽过程中目标位置会显示蓝色指示线</li>
+                            <li>排序会影响上下集切换的顺序</li>
+                        </ul>
+
+                        <h4>删除视频</h4>
+                        <ul>
+                            <li>点击视频条目最右侧的 <b>×</b> 按钮</li>
+                            <li>删除后无法恢复</li>
+                            <li>如果删除的是正在播放的视频，播放会停止</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- 悬浮球 -->
+                <div class="bili-help-section">
+                    <div class="bili-help-title">🐱 猫耳悬浮球</div>
+                    <div class="bili-help-content">
+                        <h4>进入悬浮球模式</h4>
+                        <ul>
+                            <li>点击主面板标题栏右侧的 <b>×</b> 关闭按钮</li>
+                            <li>面板会缩成一个带猫耳的圆形悬浮球</li>
+                            <li>视频播放不会中断（iframe 保持加载）</li>
+                        </ul>
+
+                        <h4>悬浮球操作</h4>
+                        <ul>
+                            <li><b>单击/轻触</b> → 恢复完整面板</li>
+                            <li><b>拖拽</b> → 移动到屏幕任意位置（桌面和移动端均支持）</li>
+                            <li><b>悬停</b> → 轻微放大（视觉反馈）</li>
+                        </ul>
+
+                        <h4>默认启动方式</h4>
+                        <ul>
+                            <li>插件默认以悬浮球模式启动（节省屏幕空间）</li>
+                            <li>可在设置中取消「以悬浮球模式启动」选项（当前版本暂未实现此设置项）</li>
+                            <li>悬浮球位置会自动保存，刷新后恢复</li>
+                        </ul>
+
+                        <h4>自定义悬浮球外观（在设置中调整）</h4>
+                        <ul>
+                            <li><b>尺寸：</b>大（72px）/ 中（58px）/ 小（44px）</li>
+                            <li><b>头像：</b>支持 Emoji 颜文字 / 图片 URL / 本地上传</li>
+                            <li><b>外框：</b>可上传自定义外框图片替代默认猫耳（支持 GIF/WebP 动图）</li>
+                            <li><b>外框调节：</b>缩放大小（30%-200%）、水平/垂直偏移、层级（前/后）</li>
+                            <li><b>隐藏外框：</b>勾选后只显示头像圆圈（用于测试新外框图片）</li>
                         </ul>
                     </div>
                 </div>
@@ -1370,166 +2005,136 @@ function openHelpDialog() {
                 <div class="bili-help-section">
                     <div class="bili-help-title">🎨 主题与外观设置</div>
                     <div class="bili-help-content">
-                        点击顶部<b> ⚙ 设置</b>按钮打开设置面板：
+                        <p>点击标题栏的 <b>⚙</b> 按钮打开设置面板。</p>
 
-                        <b>🎨 主题配色（10 套预设）：</b>
+                        <h4>🎨 10 套预设主题</h4>
                         <ul>
-                            <li>🩷 樱花粉 / 🌼 嫩黄 / 🌿 淡绿 / 🪟 毛玻璃白 / 🕶️ 毛玻璃黑</li>
-                            <li>🌸 夜樱 / 🌊 深海蓝 / 🌅 落日橘 / 💜 薰衣草 / ☕ 摩卡棕</li>
-                            <li>每套主题都有独特配色和氛围</li>
+                            <li>亮色系：🩷 樱花粉 / 🌼 嫩黄 / 🌿 淡绿 / 🌊 深海蓝 / 🌅 落日橘 / 💜 薰衣草</li>
+                            <li>暗色系：🕶️ 毛玻璃黑 / 🌸 夜樱 / ☕ 摩卡棕</li>
+                            <li>透明系：🪟 毛玻璃白</li>
                         </ul>
 
-                        <b>🖼️ 悬浮窗背景替换：</b>
+                        <h4>🖼️ 悬浮窗背景图片</h4>
                         <ul>
-                            <li>支持上传图片作为面板背景（支持 GIF/WebP 动图）</li>
-                            <li><b>背景模式：</b>保留原边框 / 图片包边</li>
-                            <li><b>填充方式：</b>覆盖 / 包含 / 平铺 / 拉伸</li>
-                            <li><b>透明度调节：</b>0-100%</li>
+                            <li>支持上传图片作为面板背景（含 GIF / WebP 动图）</li>
+                            <li><b>背景模式：</b>
+                                <ul>
+                                    <li>「作为背景」— 图片在面板底层，保留原边框样式</li>
+                                    <li>「替换边框」— 图片作为包边，原边框隐藏（适合 PNG 边框素材）</li>
+                                </ul>
+                            </li>
+                            <li><b>填充方式：</b>覆盖（推荐）/ 包含 / 平铺 / 拉伸</li>
+                            <li><b>透明度：</b>0% ~ 100% 无级调节</li>
                         </ul>
 
-                        <b>🎨 自定义配色：</b>
+                        <h4>🎨 自定义配色</h4>
                         <ul>
-                            <li>可以单独调整主色、辅色、背景色、文字颜色等</li>
-                            <li>点击「重置配色」或「应用当前主题预设」恢复默认</li>
-                        </ul>
-
-                        <b>🔘 悬浮球尺寸：</b>
-                        <ul>
-                            <li>大（72px）/ 中（58px）/ 小（44px）三种尺寸</li>
-                            <li>移动端小尺寸会自动缩小到 0.85 倍</li>
-                        </ul>
-
-                        <b>🎀 悬浮球外框装饰：</b>
-                        <ul>
-                            <li>上传自定义外框图片（支持动图 GIF/WebP）</li>
-                            <li>可调整外框大小（30%-200%）、位置偏移（水平/垂直）</li>
-                            <li>层级控制：外框在前（盖住头像）/ 外框在后（头像在前）</li>
-                            <li>勾选「隐藏外框」可以仅显示头像（方便测试新外框）</li>
-                            <li>实时预览功能可以看到调整效果</li>
-                        </ul>
-
-                        <b>🐱 悬浮球头像：</b>
-                        <ul>
-                            <li><b>颜文字/Emoji：</b>输入任意 Emoji（如 🐱、⎚˕⎚）</li>
-                            <li><b>图片 URL：</b>粘贴网络图片链接</li>
-                            <li><b>上传图片：</b>从本地选择图片（最大 2MB）</li>
+                            <li>可单独调整 6 种颜色：主色、主色浅、主色深、辅色、面板背景、文字颜色</li>
+                            <li>修改任一颜色后自动标记为「自定义配色」模式</li>
+                            <li>点击「重置配色」清除自定义，恢复当前主题预设</li>
+                            <li>点击「应用当前主题预设」将颜色选择器重置为主题默认值</li>
                         </ul>
                     </div>
                 </div>
 
-                <!-- 悬浮球 -->
+                <!-- 数据管理 -->
                 <div class="bili-help-section">
-                    <div class="bili-help-title">🐱 悬浮球功能</div>
+                    <div class="bili-help-title">💾 数据保存与导入导出</div>
                     <div class="bili-help-content">
-                        <b>进入悬浮球模式：</b>
+                        <h4>自动保存机制</h4>
                         <ul>
-                            <li>点击主面板右上角的 <b>×</b> 按钮</li>
-                            <li>面板会缩成一个可爱的猫耳悬浮球</li>
-                            <li>默认位置：桌面左侧 40px，移动端左侧 15px</li>
+                            <li>所有操作（添加/删除/排序/重命名/切换主题等）都会<b>立即自动保存</b></li>
+                            <li>双重保存策略：浏览器 <code>localStorage</code> + SillyTavern 扩展配置</li>
+                            <li>刷新页面或重启酒馆后自动恢复所有状态</li>
                         </ul>
 
-                        <b>悬浮球操作：</b>
+                        <h4>保存的内容包括</h4>
                         <ul>
-                            <li><b>单击猫耳</b> → 恢复完整主面板</li>
-                            <li><b>拖拽猫耳</b> → 移动到屏幕任意位置（位置会自动保存）</li>
-                            <li><b>悬停猫耳</b> → 放大 1.08 倍（视觉反馈）</li>
+                            <li>所有分类和视频列表（含排序）</li>
+                            <li>当前播放的视频和分类</li>
+                            <li>面板位置、大小、折叠状态</li>
+                            <li>主题、配色、背景图片、悬浮球外观</li>
                         </ul>
 
-                        <b>启动模式设置：</b>
+                        <h4>📤 导出播放列表</h4>
                         <ul>
-                            <li>默认以悬浮球模式启动（占用空间更小）</li>
-                            <li>可在设置中修改为完整面板启动</li>
+                            <li>在设置面板底部点击「📤 导出播放列表」</li>
+                            <li>自动下载一个 JSON 文件（如 <code>BiliPlayer_backup_2025-01-01.json</code>）</li>
+                            <li>包含所有分类和视频数据，可用于备份或迁移到其他设备</li>
                         </ul>
 
-                        <b>💡 使用场景：</b>
+                        <h4>📥 导入播放列表</h4>
                         <ul>
-                            <li>看电影时不想占用太多屏幕空间 → 缩成悬浮球</li>
-                            <li>需要换集或管理播放列表 → 点击悬浮球恢复面板</li>
-                            <li>悬浮球会记住上次播放的视频，点击后继续播放</li>
+                            <li>点击「📥 导入播放列表」，选择之前导出的 JSON 文件</li>
+                            <li>导入采用<b>合并模式</b>：新分类和新视频会添加到现有列表中，不会覆盖已有数据</li>
+                            <li>同一分类下相同 BV 号的视频不会重复导入</li>
+                        </ul>
+
+                        <h4>⚠️ 数据安全提醒</h4>
+                        <ul>
+                            <li>清除浏览器缓存/数据会丢失 localStorage 中的数据</li>
+                            <li>建议定期使用导出功能备份</li>
+                            <li>上传的图片（背景/外框/头像）以 Base64 存储，大文件可能影响性能</li>
+                            <li>图片建议控制在 2-5MB 以内</li>
                         </ul>
                     </div>
                 </div>
 
-                <!-- 移动端 -->
+                <!-- 面板控制 -->
                 <div class="bili-help-section">
-                    <div class="bili-help-title">📱 移动端体验</div>
+                    <div class="bili-help-title">⌨️ 面板控制与快捷操作</div>
                     <div class="bili-help-content">
-                        <b>自动适配特性：</b>
+                        <h4>标题栏按钮（从左到右）</h4>
                         <ul>
-                            <li>面板自动居中，宽度占屏幕 94%（最大 500px）</li>
-                            <li>高度占屏幕 82%（最大 700px），避免遮挡</li>
-                            <li>所有按钮、输入框自动放大，方便触屏操作</li>
-                            <li>禁用调整大小功能，避免误触</li>
+                            <li><b>?</b> — 打开本使用说明</li>
+                            <li><b>⚙</b> — 打开设置面板</li>
+                            <li><b>_</b> — 折叠/展开播放列表区域（只看视频时很实用）</li>
+                            <li><b>×</b> — 缩成猫耳悬浮球</li>
                         </ul>
 
-                        <b>触屏优化：</b>
+                        <h4>面板操作</h4>
                         <ul>
-                            <li>双击重命名不会触发拖拽</li>
-                            <li>重命名时虚拟键盘弹出不会干扰操作</li>
-                            <li>悬浮球拖拽支持触摸手势</li>
-                            <li>设置面板滚动流畅，支持惯性滑动</li>
+                            <li><b>拖拽标题栏</b> → 移动面板到任意位置</li>
+                            <li><b>拖拽右下角</b> → 调整面板大小（仅桌面端，移动端自动适配）</li>
+                            <li>面板最小尺寸：290×240px，最大尺寸：1000×900px</li>
                         </ul>
 
-                        <b>兼容性：</b>
+                        <h4>SillyTavern 集成</h4>
                         <ul>
-                            <li>支持 iOS Safari、Android Chrome、微信内置浏览器</li>
-                            <li>主题毛玻璃效果在移动端可能受限（系统差异）</li>
+                            <li>扩展设置菜单中有 BiliPlayer 开关（运行中/已关闭）</li>
+                            <li>关闭后完全隐藏面板和悬浮球，释放视频资源</li>
+                            <li>重新开启后恢复上次的播放状态</li>
+                            <li>支持斜杠命令 <code>/bili</code> 快速开关</li>
                         </ul>
                     </div>
                 </div>
 
-                <!-- 快捷操作 -->
+                <!-- 移动端适配 -->
                 <div class="bili-help-section">
-                    <div class="bili-help-title">⌨️ 快捷操作</div>
+                    <div class="bili-help-title">📱 移动端适配说明</div>
                     <div class="bili-help-content">
-                        <b>面板控制：</b>
+                        <h4>自动适配特性</h4>
                         <ul>
-                            <li><b>拖拽标题栏</b> → 移动面板位置</li>
-                            <li><b>拖拽右下角</b> → 调整面板大小（桌面端）</li>
-                            <li><b>点击 _</b> → 折叠/展开播放列表区域</li>
-                            <li><b>点击 ×</b> → 缩成悬浮球</li>
-                            <li><b>点击 ?</b> → 打开本使用说明</li>
+                            <li>面板自动居中，宽度占屏幕 94%（最大 500px），高度占 82%（最大 700px）</li>
+                            <li>所有按钮和输入框自动放大，适合手指操作</li>
+                            <li>禁用拖拽调整大小（防止误触）</li>
+                            <li>悬浮球默认位于屏幕左侧 15px 处</li>
                         </ul>
 
-                        <b>视频播放：</b>
+                        <h4>触屏操作差异</h4>
                         <ul>
-                            <li><b>单击视频名</b> → 立即播放</li>
-                            <li><b>双击视频名</b> → 进入重命名模式</li>
+                            <li>视频排序：<b>长按 0.4 秒</b>后进入拖拽模式（桌面端直接拖拽）</li>
+                            <li>分类排序：移动端暂不支持拖拽，请使用 <b>↑ ↓</b> 按钮</li>
+                            <li>重命名时虚拟键盘弹出不会误触其他按钮</li>
+                            <li>悬浮球：轻触恢复面板，长按拖拽移动位置</li>
                         </ul>
 
-                        <b>命令行快捷方式（SillyTavern）：</b>
+                        <h4>浏览器兼容性</h4>
                         <ul>
-                            <li>输入斜杠命令 <code>/bili</code> → 快速唤醒/隐藏面板</li>
-                            <li>在扩展设置菜单也有「唤醒/隐藏 BiliPlayer」按钮</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- 数据保存 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">💾 数据保存与备份</div>
-                    <div class="bili-help-content">
-                        <b>自动保存内容：</b>
-                        <ul>
-                            <li>所有播放列表和分类（包括分类名修改）</li>
-                            <li>当前播放进度（视频 + 分类）</li>
-                            <li>主题、配色、悬浮球设置</li>
-                            <li>面板位置和大小</li>
-                            <li>折叠/展开状态</li>
-                        </ul>
-
-                        <b>保存机制：</b>
-                        <ul>
-                            <li>双重保存：<code>localStorage</code> + SillyTavern 配置文件</li>
-                            <li>任何修改都会立即触发保存，无需手动操作</li>
-                            <li>刷新页面后自动恢复上次状态</li>
-                        </ul>
-
-                        <b>💡 注意事项：</b>
-                        <ul>
-                            <li>清除浏览器缓存会丢失数据，建议定期备份 SillyTavern 配置</li>
-                            <li>上传的图片（背景、外框、头像）以 Base64 编码保存，文件较大时可能影响性能</li>
-                            <li>删除操作无法撤销，重要视频建议先移动到「备份」分类</li>
+                            <li>✅ iOS Safari、Android Chrome、微信内置浏览器</li>
+                            <li>✅ 支持安全区域适配（刘海屏、底部横条）</li>
+                            <li>⚠️ 毛玻璃主题在部分旧系统上可能不生效</li>
+                            <li>⚠️ 小尺寸悬浮球在移动端会额外缩小 0.85 倍</li>
                         </ul>
                     </div>
                 </div>
@@ -1538,39 +2143,114 @@ function openHelpDialog() {
                 <div class="bili-help-section">
                     <div class="bili-help-title">❓ 常见问题</div>
                     <div class="bili-help-content">
-                        <b>Q: 为什么添加视频要我选分类？</b><br>
-                        A: 因为无法自动判断你想加到哪里，所以会先让你选择目标分类，避免加错地方。只有一个分类时不会弹窗。
+                        <h4>Q: 为什么视频无法播放 / 黑屏？</h4>
+                        <p>A: 播放器使用 B 站移动端嵌入地址，部分视频可能有版权限制或地区限制。尝试刷新页面或更换视频。</p>
 
-                        <b>Q: 批量添加的视频标题都是「BV号 - P1」怎么办？</b><br>
-                        A: 添加时在链接后加空格+自定义名字，例如：<code>https://...BV1xxx 猫和老鼠</code>，生成的标题会变成「猫和老鼠 - P1」「猫和老鼠 - P2」...
+                        <h4>Q: 粘贴链接后弹出的选分类面板是什么？</h4>
+                        <p>A: 当你有多个分类时，插件需要知道你想把视频加到哪里。只有一个分类时不会弹出此面板。</p>
 
-                        <b>Q: 为什么纯 BV 号不询问多P？</b><br>
-                        A: 为了简化流程，纯 BV 号默认当作单集视频。如果是多P合集，请用完整链接添加。
+                        <h4>Q: 纯 BV 号为什么不询问多P集数？</h4>
+                        <p>A: 为了简化操作流程。如果你需要批量添加多P合集，请使用完整视频链接格式。</p>
 
-                        <b>Q: 短链无法展开怎么办？</b><br>
-                        A: 浏览器 CORS 安全限制可能阻止短链展开，建议直接复制完整视频链接使用。
+                        <h4>Q: 批量添加后标题都是「BV号 - P1」格式，能改吗？</h4>
+                        <p>A: 可以！有两种方式：<br>
+                        ① 添加时在链接后加空格+名字（如 <code>https://...BV1xxx 蜡笔小新</code>），会自动生成「蜡笔小新 - P1」格式<br>
+                        ② 添加后双击视频名逐个修改</p>
 
-                        <b>Q: 悬浮球位置保存了吗？</b><br>
-                        A: 悬浮球每次拖拽后会自动保存位置，刷新页面后会恢复到上次的位置。
+                        <h4>Q: 短链（b23.tv）展开失败怎么办？</h4>
+                        <p>A: 受浏览器 CORS 安全策略限制，短链展开可能被拦截。建议在 B 站打开视频后复制浏览器地址栏中的完整链接。</p>
 
-                        <b>Q: 移动端看不到调整大小的功能？</b><br>
-                        A: 移动端自动禁用调整大小功能，面板会自动适配屏幕尺寸。
+                        <h4>Q: 面板位置跑到屏幕外面了怎么办？</h4>
+                        <p>A: 刷新页面即可。插件会自动检测面板是否在可视区域内，超出时会自动复位到安全位置。</p>
 
-                        <b>Q: 毛玻璃主题在某些浏览器不生效？</b><br>
-                        A: 毛玻璃效果需要浏览器支持 <code>backdrop-filter</code>，老旧浏览器可能不支持，建议使用实色主题。
+                        <h4>Q: 悬浮球位置保存了吗？</h4>
+                        <p>A: 保存了！每次拖拽悬浮球后会自动保存位置，刷新页面后会恢复到上次的位置。</p>
 
-                        <b>Q: 播放列表突然清空了？</b><br>
-                        A: 可能是浏览器缓存被清理，建议定期备份 SillyTavern 的配置文件（<code>public/settings.json</code>）。
+                        <h4>Q: 为什么移动端看不到调整大小的功能？</h4>
+                        <p>A: 移动端自动禁用了拖拽调整大小功能（防止误触），面板会自动适配屏幕尺寸。</p>
 
-                        <b>Q: 分类重命名后原来的视频还在吗？</b><br>
-                        A: 在的！重命名只是改了分类名字，分类下的所有视频都会保留，正在播放的视频也不受影响。
+                        <h4>Q: 毛玻璃主题在某些浏览器不生效？</h4>
+                        <p>A: 毛玻璃效果需要浏览器支持 <code>backdrop-filter</code> CSS 属性。部分老旧浏览器或移动端系统可能不支持，建议使用实色主题。</p>
+
+                        <h4>Q: 播放列表突然清空了？</h4>
+                        <p>A: 可能是浏览器缓存被清理导致 localStorage 数据丢失。建议定期使用「导出播放列表」功能备份数据，或检查 SillyTavern 的配置文件 <code>public/settings.json</code>。</p>
+
+                        <h4>Q: 分类重命名后原来的视频还在吗？</h4>
+                        <p>A: 在的！重命名只是改了分类名字，分类下的所有视频都会保留，正在播放的视频也不受影响。</p>
+
+                        <h4>Q: 上传的图片会占用很多空间吗？</h4>
+                        <p>A: 图片以 Base64 编码存储在配置中，文件较大时会增加存储占用。建议：<br>
+                        • 背景图片控制在 2-5MB 以内<br>
+                        • 悬浮球头像/外框控制在 500KB-2MB<br>
+                        • 避免上传超高分辨率图片（1920×1080 足够）</p>
+
+                        <h4>Q: 能否添加其他视频平台的视频？</h4>
+                        <p>A: 目前仅支持 B 站视频。其他平台的嵌入播放器接口各不相同，暂时没有计划支持。</p>
+
+                        <h4>Q: 删除操作能撤销吗？</h4>
+                        <p>A: 不能！删除分类、删除视频都是不可逆操作。建议重要内容先移动到「备份」分类中，或使用导出功能备份整个列表。</p>
+
+                        <h4>Q: 为什么有些视频标题是乱码？</h4>
+                        <p>A: 插件不会自动获取视频标题（避免频繁请求 B 站 API）。建议添加时手动输入自定义名字，或添加后双击修改。</p>
+
+                        <h4>Q: 拖拽排序不灵敏怎么办？</h4>
+                        <p>A: 桌面端直接拖拽即可；移动端需要<b>长按</b>约 0.4-0.5 秒后才能进入拖拽模式。如果仍不灵敏，可能是浏览器兼容性问题，尝试使用「↑ ↓」按钮调整顺序。</p>
+
+                        <h4>Q: 设置面板的颜色选择器不准确？</h4>
+                        <p>A: 部分暗色主题使用了 rgba 透明色，颜色选择器无法直接编辑透明度。建议使用预设主题，或在「自定义配色」中调整纯色版本。</p>
+
+                        <h4>Q: 番剧链接为什么不支持？</h4>
+                        <p>A: B 站番剧链接（<code>/bangumi/play/</code>）的嵌入播放器接口与普通视频不同，且受版权限制更严格。建议在网页打开番剧，找到播放页面的 BV 号（在地址栏或分享按钮中），然后用 BV 号添加。</p>
+
+                        <h4>Q: 移动端分类拖拽为什么不能用？</h4>
+                        <p>A: 移动端分类拖拽功能存在交互冲突，已暂时禁用。请使用分类标题右侧的「↑ ↓」按钮调整顺序。视频拖拽排序在移动端正常可用（长按 0.4 秒）。</p>
+                    </div>
+                </div>
+
+                <!-- 高级技巧 -->
+                <div class="bili-help-section">
+                    <div class="bili-help-title">🎓 高级技巧</div>
+                    <div class="bili-help-content">
+                        <h4>💡 视频管理技巧</h4>
+                        <ul>
+                            <li>创建「🎬 待看」分类作为临时收藏夹，看完后移动到对应分类</li>
+                            <li>使用 Emoji 前缀区分分类类型（如 📺 追番、🎥 电影、🎵 音乐MV）</li>
+                            <li>批量添加时先填起始集数，可以跳过前面已看过的集数</li>
+                            <li>重命名时可以加「✓」标记已看完的视频，如「蜡笔小新 EP1 ✓」</li>
+                        </ul>
+
+                        <h4>🎨 美化技巧</h4>
+                        <ul>
+                            <li>悬浮球外框建议使用<b>透明PNG</b>，中心留空，四周有图案装饰</li>
+                            <li>面板背景图「替换边框」模式适合<b>边框素材</b>（四周有花纹的PNG）</li>
+                            <li>面板背景图「作为背景」模式适合<b>纹理或壁纸</b>（支持GIF动图）</li>
+                            <li>暗色主题配暗色背景图效果更佳，亮色主题同理</li>
+                            <li>自定义配色时，建议主色和辅色对比度不要太低，保证可读性</li>
+                        </ul>
+
+                        <h4>⚡ 效率技巧</h4>
+                        <ul>
+                            <li>在 SillyTavern 对话框中输入 <code>/bili</code> 可快速开关播放器</li>
+                            <li>折叠模式 + 悬浮窗背景图 = 精简美观的小窗播放器</li>
+                            <li>移动端建议使用悬浮球启动，节省屏幕空间</li>
+                            <li>桌面端可以把面板缩到屏幕角落，随用随开</li>
+                        </ul>
+
+                        <h4>🔧 故障排查</h4>
+                        <ul>
+                            <li>视频加载慢 → 检查网络连接，或刷新页面重新加载</li>
+                            <li>设置不生效 → 点击「保存」后刷新页面</li>
+                            <li>面板消失了 → 在扩展设置菜单中点击 BiliPlayer 开关重新开启</li>
+                            <li>数据丢失了 → 检查 SillyTavern 的 <code>public/settings.json</code> 文件</li>
+                        </ul>
                     </div>
                 </div>
 
                 <!-- 页脚 -->
                 <div class="bili-help-footer">
                     🐾 BiliPlayer v2.0.0 · 让小主人看电影更开心~<br>
-                    <span style="font-size:10px; opacity:0.8;">💖 特别鸣谢：本插件底层核心逻辑由 <b>老农民</b> 老师提供支持</span>
+                    <span style="font-size:10px; opacity:0.8;">💖 特别鸣谢：本插件底层核心逻辑由 <b>老农民</b> 老师提供支持</span><br>
+                    <a href="https://github.com/yangtfei204-hub/SillyTavern-BiliPlayer" target="_blank" style="font-size:11px;margin-top:8px;display:inline-block;color:var(--kp-primary);text-decoration:none;">📄 查看项目主页 & 完整文档</a>
                 </div>
             </div>
         </div>
@@ -1582,13 +2262,13 @@ function openHelpDialog() {
     helpDialogElement.querySelector('.bili-help-mask').onclick = closeHelpDialog;
 }
 
-
 function closeHelpDialog() {
     if (helpDialogElement) {
         helpDialogElement.remove();
         helpDialogElement = null;
     }
 }
+
 
 // 11. 设置弹窗
 function openSettingsDialog() {
@@ -1827,6 +2507,19 @@ function openSettingsDialog() {
                     </div>
                 </div>
 
+                <!-- 导出/导入 -->
+                <div class="bili-settings-section">
+                    <div class="bili-settings-label">💾 数据导出/导入</div>
+                    <div class="bili-border-image-controls">
+                        <div class="bili-border-image-upload-wrap">
+                            <button id="bili-export-btn" type="button" class="bili-action-btn-sm bili-action-btn-primary">📤 导出播放列表</button>
+                            <button id="bili-import-file-btn" type="button" class="bili-action-btn-sm bili-action-btn-warn">📥 导入播放列表</button>
+                            <input type="file" id="bili-import-file-input" accept=".json" style="display:none;">
+                        </div>
+                        <div class="bili-border-image-tip">💡 导出为 JSON 文件，可跨设备迁移。导入时会合并到现有列表（不会覆盖）</div>
+                    </div>
+                </div>
+
                 <!-- 操作按钮 -->
                 <div class="bili-settings-actions">
                     <button id="bili-settings-reset" type="button" class="bili-action-btn-sm bili-action-btn-warn">恢复默认</button>
@@ -1933,7 +2626,7 @@ function setupSettingsEvents() {
         const input = dialog.querySelector(`#bili-color-${key}`);
         if (input) {
             input.oninput = (e) => {
-                const cssVar = '--kp-' + key.replace(/([A-Z])/g, '-\$1').toLowerCase();
+                const cssVar = '--kp-' + key.replace(/([A-Z])/g, '-$1').toLowerCase();
                 document.documentElement.style.setProperty(cssVar, e.target.value);
             };
         }
@@ -1996,11 +2689,11 @@ function setupSettingsEvents() {
         hideBorderCheckbox.onchange = (e) => {
             state.settings.hideBadgeBorder = e.target.checked;
             if (floatBadgeElement) applyBadgeBorder();
-            updateBadgePreview();  // ⭐ 更新预览
+            updateBadgePreview();
         };
     }
 
-    // ⭐ 新增：层级控制
+    // ⭐ 层级控制
     const zIndexSelect = dialog.querySelector('#bili-badge-border-zindex');
     if (zIndexSelect) {
         zIndexSelect.onchange = (e) => {
@@ -2010,7 +2703,7 @@ function setupSettingsEvents() {
         };
     }
 
-    // ⭐ 新增：缩放控制
+    // ⭐ 缩放控制
     const scaleRange = dialog.querySelector('#bili-badge-border-scale');
     const scaleVal = dialog.querySelector('#bili-badge-border-scale-val');
     if (scaleRange) {
@@ -2023,7 +2716,7 @@ function setupSettingsEvents() {
         };
     }
 
-    // ⭐ 新增：水平偏移
+    // ⭐ 水平偏移
     const xRange = dialog.querySelector('#bili-badge-border-x');
     const xVal = dialog.querySelector('#bili-badge-border-x-val');
     if (xRange) {
@@ -2036,7 +2729,7 @@ function setupSettingsEvents() {
         };
     }
 
-    // ⭐ 新增：垂直偏移
+    // ⭐ 垂直偏移
     const yRange = dialog.querySelector('#bili-badge-border-y');
     const yVal = dialog.querySelector('#bili-badge-border-y-val');
     if (yRange) {
@@ -2049,14 +2742,13 @@ function setupSettingsEvents() {
         };
     }
 
-    // ⭐ 新增：悬浮球尺寸切换时更新预览
+    // ⭐ 悬浮球尺寸切换时更新预览
     dialog.querySelectorAll('input[name="bili-badge-size"]').forEach(radio => {
         radio.onchange = (e) => {
-            // 临时更新 state 以便预览显示正确尺寸
             const tempSize = state.settings.badgeSize;
             state.settings.badgeSize = e.target.value;
             updateBadgePreview();
-            state.settings.badgeSize = tempSize; // 恢复，等保存时再真正应用
+            state.settings.badgeSize = tempSize;
         };
     });
 
@@ -2095,7 +2787,65 @@ function setupSettingsEvents() {
         };
         reader.readAsDataURL(file);
     };
-    
+
+    // ⭐ 导出播放列表
+    dialog.querySelector('#bili-export-btn').onclick = () => {
+        const exportData = {
+            version: '2.1.0',
+            exportTime: new Date().toISOString(),
+            playlistData: state.playlistData
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `BiliPlayer_backup_${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('📤 导出成功！');
+    };
+
+    // ⭐ 导入播放列表
+    const importFileInput = dialog.querySelector('#bili-import-file-input');
+    dialog.querySelector('#bili-import-file-btn').onclick = () => importFileInput.click();
+    importFileInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const imported = JSON.parse(ev.target.result);
+                const data = imported.playlistData || imported;
+                if (typeof data !== 'object' || Array.isArray(data)) {
+                    alert('文件格式不正确哦~');
+                    return;
+                }
+                let addedGroups = 0;
+                let addedVideos = 0;
+                Object.entries(data).forEach(([groupName, videos]) => {
+                    if (!Array.isArray(videos)) return;
+                    if (!state.playlistData[groupName]) {
+                        state.playlistData[groupName] = [];
+                        addedGroups++;
+                    }
+                    videos.forEach(v => {
+                        if (v.bvid && !state.playlistData[groupName].some(existing => existing.bvid === v.bvid)) {
+                            state.playlistData[groupName].push({ bvid: v.bvid, title: v.title || v.bvid });
+                            addedVideos++;
+                        }
+                    });
+                });
+                renderGroups();
+                saveExtensionSettings();
+                showToast(`📥 导入成功！新增 ${addedGroups} 个分类，${addedVideos} 个视频`);
+            } catch (err) {
+                alert('导入失败：文件解析出错\n' + err.message);
+            }
+        };
+        reader.readAsText(file);
+        importFileInput.value = '';
+    };
+
     dialog.querySelector('#bili-settings-reset').onclick = () => {
         if (!confirm('确定要恢复所有设置为默认值吗？播放列表不会受影响~')) return;
         
@@ -2109,10 +2859,10 @@ function setupSettingsEvents() {
         state.settings.customColors = DEFAULT_SETTINGS.customColors;
         state.settings.badgeBorderImage = DEFAULT_SETTINGS.badgeBorderImage;
         state.settings.hideBadgeBorder = DEFAULT_SETTINGS.hideBadgeBorder;
-        state.settings.badgeBorderZIndex = DEFAULT_SETTINGS.badgeBorderZIndex;      // ⭐ 新增
-        state.settings.badgeBorderScale = DEFAULT_SETTINGS.badgeBorderScale;        // ⭐ 新增
-        state.settings.badgeBorderOffsetX = DEFAULT_SETTINGS.badgeBorderOffsetX;    // ⭐ 新增
-        state.settings.badgeBorderOffsetY = DEFAULT_SETTINGS.badgeBorderOffsetY;    // ⭐ 新增
+        state.settings.badgeBorderZIndex = DEFAULT_SETTINGS.badgeBorderZIndex;
+        state.settings.badgeBorderScale = DEFAULT_SETTINGS.badgeBorderScale;
+        state.settings.badgeBorderOffsetX = DEFAULT_SETTINGS.badgeBorderOffsetX;
+        state.settings.badgeBorderOffsetY = DEFAULT_SETTINGS.badgeBorderOffsetY;
         
         closeSettingsDialog();
         openSettingsDialog();
@@ -2180,7 +2930,7 @@ function setupSettingsEvents() {
         if (floatBadgeElement) {
             floatBadgeElement.setAttribute('data-size', badgeSize);
             updateBadgeAvatar();
-            applyBadgeBorder();  // ⭐ 应用悬浮球外框
+            applyBadgeBorder();
         }
         
         saveExtensionSettings();
@@ -2505,6 +3255,276 @@ async function expandShortUrl(shortUrl) {
     }
 }
 
+function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function showToast(msg, duration = 2200) {
+    const existing = document.getElementById('bili-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'bili-toast';
+    toast.textContent = msg;
+    toast.style.cssText = `
+        position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+        background: var(--kp-action-primary); color: var(--kp-action-primary-text);
+        padding: 10px 20px; border-radius: 12px; z-index: 999999;
+        font-size: 13px; font-weight: 700; font-family: 'Microsoft YaHei', sans-serif;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        animation: bili-import-pop 0.25s ease;
+        pointer-events: none;
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+// ⭐ 新增：可视化导入弹窗（替代 prompt 选分类 + 填集数）
+function showImportDialog(bvid, customTitle, parsed, allGroups) {
+    return new Promise((resolve) => {
+        const existing = document.getElementById('bili-ext-import-dialog');
+        if (existing) existing.remove();
+
+        const dialog = document.createElement('div');
+        dialog.id = 'bili-ext-import-dialog';
+        dialog.setAttribute('data-theme', state.settings.theme);
+
+        let selectedGroup = null;
+
+        dialog.innerHTML = `
+            <div class="bili-import-mask"></div>
+            <div class="bili-import-box">
+                <div class="bili-import-header">
+                    <span>📺 添加视频</span>
+                    <button class="bili-import-close" type="button">×</button>
+                </div>
+                <div class="bili-import-body">
+                    <div class="bili-import-info">
+                        <div class="bili-import-bvid">🎬 ${customTitle || bvid}</div>
+                        ${customTitle ? `<div class="bili-import-bvid-sub">${bvid}</div>` : ''}
+                    </div>
+
+                    <!-- Step 1: 选择分类 -->
+                    <div class="bili-import-step" id="bili-import-step1">
+                        <div class="bili-import-step-title">📂 选择目标分类</div>
+                        <div class="bili-import-group-list" id="bili-import-group-list">
+                            ${allGroups.map((name) => `
+                                <button class="bili-import-group-btn ${state.currentGroup === name ? 'bili-import-group-current' : ''}" data-group="${escapeHtml(name)}" type="button">
+                                    <span class="bili-import-group-icon">${state.currentGroup === name ? '▶️' : '📁'}</span>
+                                    <span class="bili-import-group-name">${escapeHtml(name)}</span>
+                                    <span class="bili-import-group-count">${(state.playlistData[name] || []).length} 个视频</span>
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Step 2: 填集数 -->
+                    <div class="bili-import-step" id="bili-import-step2" style="display:none;">
+                        <div class="bili-import-step-title">📋 是否为多P合集？</div>
+                        <div class="bili-import-step-desc">
+                            如果是单集视频，直接点「添加单集」<br>
+                            如果是多P合集，填写起始和结束集数（起始默认为 1）
+                        </div>
+                        <div class="bili-import-episode-wrap">
+                            <input type="number" id="bili-import-episode-start"
+                                   class="bili-import-episode-input"
+                                   placeholder="起始集数（默认从第 1 集开始）"
+                                   min="1" max="9999"
+                                   style="margin-bottom:6px;">
+                            <input type="number" id="bili-import-episode-input"
+                                   class="bili-import-episode-input"
+                                   placeholder="结束集数，如 12、24、130..."
+                                   min="1" max="9999">
+                        </div>
+                        <div class="bili-import-actions">
+                            <button id="bili-import-single-btn" class="bili-import-action-btn bili-import-btn-secondary" type="button">
+                                添加单集
+                            </button>
+                            <button id="bili-import-batch-btn" class="bili-import-action-btn bili-import-btn-primary" type="button">
+                                批量添加
+                            </button>
+                        </div>
+                        <button id="bili-import-back-btn" class="bili-import-back-btn" type="button">
+                            ← 返回选分类
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(dialog);
+
+        const step1 = dialog.querySelector('#bili-import-step1');
+        const step2 = dialog.querySelector('#bili-import-step2');
+
+        const onEsc = (e) => {
+            if (e.key === 'Escape') closeDialog(null);
+        };
+        document.addEventListener('keydown', onEsc);
+
+        const closeDialog = (result = null) => {
+            document.removeEventListener('keydown', onEsc);
+            dialog.remove();
+            resolve(result);
+        };
+
+        // 关闭
+        dialog.querySelector('.bili-import-close').onclick = () => closeDialog(null);
+        dialog.querySelector('.bili-import-mask').onclick = () => closeDialog(null);
+
+        // 选择分类按钮
+        dialog.querySelectorAll('.bili-import-group-btn').forEach(btn => {
+            btn.onclick = () => {
+                selectedGroup = btn.dataset.group;
+                dialog.querySelectorAll('.bili-import-group-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                if (parsed.needFetchPages) {
+                    step1.style.display = 'none';
+                    step2.style.display = 'block';
+                    step2.style.animation = 'none';
+                    step2.offsetHeight;
+                    step2.style.animation = '';
+                    setTimeout(() => {
+                        const epInput = dialog.querySelector('#bili-import-episode-input');
+                        if (epInput) epInput.focus();
+                    }, 100);
+                } else {
+                    // ⭐ 纯BV号 + 多分类：选完直接关闭
+                    closeDialog({ group: selectedGroup, mode: 'single', episodes: 0 });
+                }
+            };
+        });
+
+
+        // 返回上一步
+        const backBtn = dialog.querySelector('#bili-import-back-btn');
+        if (backBtn) {
+            backBtn.onclick = () => {
+                step2.style.display = 'none';
+                step1.style.display = 'block';
+                step1.style.animation = 'none';
+                step1.offsetHeight;
+                step1.style.animation = '';
+            };
+        }
+
+        // 添加单集
+        const singleBtn = dialog.querySelector('#bili-import-single-btn');
+        if (singleBtn) {
+            singleBtn.onclick = () => {
+                closeDialog({ group: selectedGroup, mode: 'single', episodes: 0 });
+            };
+        }
+
+        // 批量添加
+        const batchBtn = dialog.querySelector('#bili-import-batch-btn');
+        if (batchBtn) {
+            batchBtn.onclick = () => {
+                const startInput = dialog.querySelector('#bili-import-episode-start');
+                const endInput = dialog.querySelector('#bili-import-episode-input');
+                const startNum = parseInt(startInput.value) || 1;
+                const endNum = parseInt(endInput.value);
+                if (isNaN(endNum) || endNum < 1 || endNum < startNum) {
+                    endInput.style.borderColor = 'var(--kp-primary-deep)';
+                    endInput.style.animation = 'bili-shake 0.3s ease';
+                    setTimeout(() => {
+                        endInput.style.animation = '';
+                        endInput.style.borderColor = '';
+                    }, 400);
+                    endInput.placeholder = endNum < startNum ? '结束集数不能小于起始集数' : '请输入有效的集数...';
+                    endInput.focus();
+                    return;
+                }
+                closeDialog({ group: selectedGroup, mode: 'batch', startEpisode: startNum, episodes: endNum });
+            };
+        }
+
+        // 回车触发批量
+        const episodeStartInput = dialog.querySelector('#bili-import-episode-start');
+        const episodeEndInput = dialog.querySelector('#bili-import-episode-input');
+        if (episodeStartInput) {
+            episodeStartInput.onkeydown = (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); episodeEndInput.focus(); }
+            };
+        }
+        if (episodeEndInput) {
+            episodeEndInput.onkeydown = (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); batchBtn.click(); }
+            };
+        }
+    });
+}
+
+// ⭐ 新增：移动视频到其他分类的可视化弹窗
+function showMoveDialog(item, currentGroup) {
+    return new Promise((resolve) => {
+        const allGroups = Object.keys(state.playlistData).filter(g => g !== currentGroup);
+        if (allGroups.length === 0) {
+            showToast('⚠️ 没有其他分类可以移动到');
+            resolve(null);
+            return;
+        }
+
+        const existing = document.getElementById('bili-ext-move-dialog');
+        if (existing) existing.remove();
+
+        const dialog = document.createElement('div');
+        dialog.id = 'bili-ext-move-dialog';
+        dialog.setAttribute('data-theme', state.settings.theme);
+
+        dialog.innerHTML = `
+            <div class="bili-import-mask"></div>
+            <div class="bili-import-box">
+                <div class="bili-import-header">
+                    <span>📦 移动视频</span>
+                    <button class="bili-import-close" type="button">×</button>
+                </div>
+                <div class="bili-import-body">
+                    <div class="bili-import-info">
+                        <div class="bili-import-bvid">🎬 ${escapeHtml(item.title || item.bvid)}</div>
+                        <div class="bili-import-bvid-sub">当前分类：${escapeHtml(currentGroup)}</div>
+                    </div>
+                    <div class="bili-import-step">
+                        <div class="bili-import-step-title">📂 移动到哪个分类？</div>
+                        <div class="bili-import-group-list">
+                            ${allGroups.map((name) => `
+                                <button class="bili-import-group-btn" data-group="${escapeHtml(name)}" type="button">
+                                    <span class="bili-import-group-icon">📁</span>
+                                    <span class="bili-import-group-name">${escapeHtml(name)}</span>
+                                    <span class="bili-import-group-count">${(state.playlistData[name] || []).length} 个视频</span>
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(dialog);
+
+        const onEsc = (e) => { if (e.key === 'Escape') closeDialog(null); };
+        document.addEventListener('keydown', onEsc);
+
+        const closeDialog = (result) => {
+            document.removeEventListener('keydown', onEsc);
+            dialog.remove();
+            resolve(result);
+        };
+
+        dialog.querySelector('.bili-import-close').onclick = () => closeDialog(null);
+        dialog.querySelector('.bili-import-mask').onclick = () => closeDialog(null);
+
+        dialog.querySelectorAll('.bili-import-group-btn').forEach(btn => {
+            btn.onclick = () => closeDialog(btn.dataset.group);
+        });
+    });
+}
+
 function createGroup() {
     const input = document.getElementById('bili-ext-g-input');
     const name = input.value.trim();
@@ -2552,95 +3572,93 @@ async function addVideo() {
     const finalBvid = pageNum ? `${bvid}_p${pageNum}` : bvid;
     const displayTitle = customTitle || (pageNum ? `${bvid} (P${pageNum})` : bvid);
 
-    // ⭐ 让用户选择目标分类
     const allGroups = Object.keys(state.playlistData);
     let defaultBox;
 
-    if (allGroups.length === 1) {
-        // 只有一个分类，直接用
-        defaultBox = allGroups[0];
-    } else {
-        // 多个分类，让用户选择
-        const groupList = allGroups.map((name, idx) => `${idx + 1}. ${name}`).join('\n');
-        const choiceStr = prompt(
-            `请选择要添加到哪个分类？\n（输入序号）\n\n${groupList}`
-        );
-        const choiceIdx = parseInt(choiceStr) - 1;
-        if (choiceStr === null || isNaN(choiceIdx) || choiceIdx < 0 || choiceIdx >= allGroups.length) {
-            // 用户取消或输入无效，默认用当前分类或第一个
-            defaultBox = state.currentGroup || allGroups[0];
-        } else {
-            defaultBox = allGroups[choiceIdx];
+    // 没有分类时自动创建
+    if (allGroups.length === 0) {
+        state.playlistData["🐾 未分类"] = [];
+        defaultBox = "🐾 未分类";
+        renderGroups();
+        // 如果不需要询问多P，直接添加
+        if (!parsed.needFetchPages) {
+            if (!state.playlistData[defaultBox].some(v => v.bvid === finalBvid)) {
+                state.playlistData[defaultBox].push({ bvid: finalBvid, title: displayTitle });
+            }
+            input.value = '';
+            renderGroups();
+            saveExtensionSettings();
+            if (!state.currentBvid) loadVideo(defaultBox, finalBvid);
+            return;
         }
+        // 需要询问多P时，还是走弹窗（此时只有一个分类）
     }
 
+    // 只有一个分类且不需要多P询问 → 直接添加，不弹窗
+    const currentGroups = Object.keys(state.playlistData);
+    if (currentGroups.length === 1 && !parsed.needFetchPages) {
+        defaultBox = currentGroups[0];
+        if (!state.playlistData[defaultBox]) state.playlistData[defaultBox] = [];
+        if (!state.playlistData[defaultBox].some(v => v.bvid === finalBvid)) {
+            state.playlistData[defaultBox].push({ bvid: finalBvid, title: displayTitle });
+            showToast(`✅ 已添加到「${defaultBox}」`);
+        } else {
+            showToast(`⚠️ 该视频已存在于「${defaultBox}」`);
+        }
+        input.value = '';
+        renderGroups();
+        saveExtensionSettings();
+        if (!state.currentBvid) loadVideo(defaultBox, finalBvid);
+        return;
+    }
+
+
+    // ⭐ 其他情况：弹出可视化面板
+    const result = await showImportDialog(bvid, customTitle, parsed, currentGroups);
+
+    if (!result) return; // 用户取消
+
+    defaultBox = result.group;
     if (!state.playlistData[defaultBox]) state.playlistData[defaultBox] = [];
 
-    // ⭐ 如果需要批量添加多P，先询问，避免单独添加第一集
-    if (parsed.needFetchPages) {
-        const totalStr = prompt(
-            `📺 检测到这是一个视频链接！\n\n` +
-            `· 如果是单集视频，直接点「取消」\n` +
-            `· 如果是多P合集（如动画/连续剧），请输入总集数\n\n` +
-            `BV号：${bvid}\n` +
-            `（不确定集数？可以先打开视频看看播放列表）`
-        );
-        
-        if (totalStr !== null) {
-            const total = parseInt(totalStr);
-            if (!isNaN(total) && total > 1) {
-                // ⭐ 用户确认是多P，直接批量添加，不再单独添加第一集
-                if (confirm(`确定添加全部 ${total} 集到「${defaultBox}」吗？`)) {
-                    const loadingToast = document.createElement('div');
-                    loadingToast.id = 'bili-batch-loading-toast';
-                    loadingToast.textContent = `正在添加 ${total} 集，请稍候...`;
-                    loadingToast.style.cssText = `
-                        position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-                        background: var(--kp-primary); color: white; padding: 12px 24px;
-                        border-radius: 12px; z-index: 999999; font-size: 14px; font-weight: bold;
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                    `;
-                    document.body.appendChild(loadingToast);
+    // 批量添加
+    if (result.mode === 'batch' && result.episodes > 1) {
+        const start = result.startEpisode || 1;
+        const end = result.episodes;
+        let addedCount = 0;
+        const baseTitle = customTitle || bvid;
 
-                    let addedCount = 0;
-                    const baseTitle = customTitle || bvid;
-                    
-                    for (let i = 1; i <= total; i++) {
-                        const pBvid = `${bvid}_p${i}`;
-                        if (state.playlistData[defaultBox].some(v => v.bvid === pBvid)) continue;
-                        state.playlistData[defaultBox].push({
-                            bvid: pBvid,
-                            title: `${baseTitle} - P${i}`
-                        });
-                        addedCount++;
-                    }
-                    
-                    loadingToast.remove();
-
-                    if (addedCount > 0) {
-                        input.value = '';
-                        renderGroups();
-                        saveExtensionSettings();
-                        // 自动播放第一集
-                        if (!state.currentBvid) loadVideo(defaultBox, `${bvid}_p1`);
-                        alert(`✅ 成功添加 ${addedCount} 集！`);
-                    }
-                    return; // ⭐ 批量添加完成，直接返回
-                }
-            }
+        for (let i = start; i <= end; i++) {
+            const pBvid = `${bvid}_p${i}`;
+            if (state.playlistData[defaultBox].some(v => v.bvid === pBvid)) continue;
+            state.playlistData[defaultBox].push({
+                bvid: pBvid,
+                title: `${baseTitle} - P${i}`
+            });
+            addedCount++;
         }
-        // ⭐ 用户取消或输入单集，继续走下面的单集添加逻辑
+
+        if (addedCount > 0) {
+            input.value = '';
+            renderGroups();
+            saveExtensionSettings();
+            if (!state.currentBvid) loadVideo(defaultBox, `${bvid}_p${start}`);
+            showToast(`✅ 成功添加 ${addedCount} 集到「${defaultBox}」`);
+        }
+        return;
     }
 
-    // ⭐ 单集添加逻辑（用户取消多P询问，或纯BV号输入）
+    // 单集添加
     if (!state.playlistData[defaultBox].some(v => v.bvid === finalBvid)) {
         state.playlistData[defaultBox].push({ bvid: finalBvid, title: displayTitle });
+        showToast(`✅ 已添加到「${defaultBox}」`);
+    } else {
+        showToast(`⚠️ 该视频已存在于「${defaultBox}」`);
     }
 
     input.value = '';
     renderGroups();
     saveExtensionSettings();
-
     if (!state.currentBvid) loadVideo(defaultBox, finalBvid);
 }
 
