@@ -467,6 +467,8 @@ function updateNavButtons() {
             infoSpan.textContent = '';
         }
     }
+
+    updateOverlayButtons();
 }
 
 
@@ -1295,6 +1297,15 @@ function createPanel() {
                 <div class="bili-ext-mascot">${themeEmoji} • 人 • ${themeEmoji}</div>
                 <p>小主人请投喂我~</p>
             </div>
+            <div class="bili-ext-overlay-nav" id="bili-ext-overlay-nav">
+                <div class="bili-ext-overlay-trigger" id="bili-ext-overlay-trigger"></div>
+                <button class="bili-overlay-btn left" id="bili-overlay-prev" type="button" disabled>
+                    <span>⏮</span>
+                </button>
+                <button class="bili-overlay-btn right" id="bili-overlay-next" type="button" disabled>
+                    <span>⏭</span>
+                </button>
+            </div>
         </div>
         <div class="bili-ext-nav-bar" id="bili-ext-nav-bar">
             <button id="bili-ext-prev-btn" class="bili-nav-btn" title="上一集" type="button" disabled>⏮ 上一集</button>
@@ -1398,7 +1409,103 @@ function setupPanelEventDelegation(panel) {
     });
 
     initDragSystem(panel, document.getElementById('bili-ext-header-drag'), false);
+    setupOverlayNav(panel);
 }
+
+// ⭐ 折叠模式 - 视频遮罩浮层上下集按钮
+function setupOverlayNav(panel) {
+    const overlayNav = panel.querySelector('#bili-ext-overlay-nav');
+    const trigger = panel.querySelector('#bili-ext-overlay-trigger');
+    const prevBtn = panel.querySelector('#bili-overlay-prev');
+    const nextBtn = panel.querySelector('#bili-overlay-next');
+    if (!overlayNav || !trigger || !prevBtn || !nextBtn) return;
+
+    let hideTimer = null;
+
+    const showButtons = () => {
+        clearTimeout(hideTimer);
+        overlayNav.classList.add('active');
+        overlayNav.classList.remove('fade-out');
+        updateOverlayButtons();
+
+        hideTimer = setTimeout(() => {
+            overlayNav.classList.add('fade-out');
+            setTimeout(() => {
+                overlayNav.classList.remove('active', 'fade-out');
+            }, 300);
+        }, 3000);
+    };
+
+    const hideButtons = () => {
+        clearTimeout(hideTimer);
+        overlayNav.classList.add('fade-out');
+        setTimeout(() => {
+            overlayNav.classList.remove('active', 'fade-out');
+        }, 300);
+    };
+
+    // 点击顶部触发条 → 切换按钮显示/隐藏
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (overlayNav.classList.contains('active') && !overlayNav.classList.contains('fade-out')) {
+            hideButtons();
+        } else {
+            showButtons();
+        }
+    });
+
+    trigger.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (overlayNav.classList.contains('active') && !overlayNav.classList.contains('fade-out')) {
+            hideButtons();
+        } else {
+            showButtons();
+        }
+    });
+
+    // 上一集
+    prevBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        playPrev();
+        setTimeout(() => { updateOverlayButtons(); showButtons(); }, 100);
+    });
+
+    // 下一集
+    nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        playNext();
+        setTimeout(() => { updateOverlayButtons(); showButtons(); }, 100);
+    });
+
+    prevBtn.addEventListener('touchend', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        playPrev();
+        setTimeout(() => { updateOverlayButtons(); showButtons(); }, 100);
+    });
+
+    nextBtn.addEventListener('touchend', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        playNext();
+        setTimeout(() => { updateOverlayButtons(); showButtons(); }, 100);
+    });
+}
+
+
+
+// ⭐ 更新遮罩浮层按钮的 disabled 状态
+function updateOverlayButtons() {
+    const prevBtn = document.getElementById('bili-overlay-prev');
+    const nextBtn = document.getElementById('bili-overlay-next');
+    if (!prevBtn || !nextBtn) return;
+
+    const videos = state.playlistData[state.currentGroup] || [];
+    const currentIdx = videos.findIndex(v => v.bvid === state.currentBvid);
+
+    prevBtn.disabled = currentIdx <= 0;
+    nextBtn.disabled = currentIdx === -1 || currentIdx >= videos.length - 1;
+}
+
 
 // 7. 拖拽系统
 function initDragSystem(panel, handle, isBadge) {
@@ -1771,45 +1878,45 @@ function openHelpDialog() {
             </div>
             <div class="bili-help-body">
 
-                <!-- 快速上手 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">🚀 三步快速上手</div>
+                <!-- 快速上手（默认展开） -->
+                <details class="bili-help-section" open>
+                    <summary class="bili-help-title">🚀 三步快速上手</summary>
                     <div class="bili-help-content">
                         <ol>
                             <li><b>创建分类：</b>在「新分类/系列名称」输入框填入名字（如「追番」「电影」），点击<b>「新建系列」</b></li>
                             <li><b>添加视频：</b>在下方输入框粘贴 B 站视频链接或 BV 号，点击<b>「投喂」</b></li>
                             <li><b>开始播放：</b>点击列表中任意视频名即可播放</li>
                         </ol>
-                        
-                        <b>💡 温馨提示：</b>
+
+                        <p><b>💡 温馨提示：</b></p>
                         <ul>
                             <li>第一次使用时，如果还没有分类，添加视频会自动创建「🐾 未分类」</li>
                             <li>面板可以随意拖拽移动，右下角可以调整大小（桌面端）</li>
                             <li>点击右上角 <b>×</b> 会缩成可爱的猫耳悬浮球，再次点击即可恢复</li>
                         </ul>
 
-                        <b>🎯 核心功能一览：</b>
+                        <p><b>🎯 核心功能一览：</b></p>
                         <ul>
-                            <li>🎨 10 套预设主题 + 自定义配色 + 背景图片（含动图）</li>
+                            <li>🎨 10 套预设主题 + 自定义配色 + 背景图片（含动图 GIF/WebP）</li>
                             <li>📂 分类管理：拖拽排序、重命名、上下移动、删除</li>
-                            <li>🎞️ 视频管理：双击改名、拖拽排序、批量添加、分类间移动</li>
-                            <li>⏮️ 上下集切换：视频区下方导航栏，自动识别播放位置</li>
-                            <li>🐱 悬浮球模式：缩成猫耳球，支持自定义头像和外框</li>
-                            <li>💾 数据自动保存 + 导出导入备份（JSON 格式）</li>
+                            <li>🎞️ 视频管理：双击改名、拖拽排序、批量添加多P合集、分类间移动</li>
+                            <li>⏮️ 上下集切换：视频区下方导航栏 + 折叠模式浮层按钮</li>
+                            <li>🐱 悬浮球模式：缩成猫耳球，支持自定义头像、外框、缩放、偏移</li>
+                            <li>💾 数据自动保存 + JSON 格式导出导入备份</li>
                         </ul>
                     </div>
-                </div>
+                </details>
 
                 <!-- 添加视频详解 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">🎬 添加视频（详细说明）</div>
+                <details class="bili-help-section">
+                    <summary class="bili-help-title">🎬 添加视频（详细说明）</summary>
                     <div class="bili-help-content">
                         <h4>✨ 支持的输入格式</h4>
                         <ul>
                             <li><b>纯 BV 号：</b><code>BV1SPQeBuE2d</code></li>
                             <li><b>完整视频链接：</b><code>https://www.bilibili.com/video/BV1xxx</code></li>
                             <li><b>分P链接：</b><code>https://www.bilibili.com/video/BV1xxx?p=3</code></li>
-                            <li><b>带追踪参数的链接：</b><code>https://...?vd_source=xxx</code>（自动过滤）</li>
+                            <li><b>带追踪参数的链接：</b><code>https://...?vd_source=xxx</code>（自动过滤无关参数）</li>
                             <li><b>B站短链：</b><code>https://b23.tv/abc123</code>（自动展开，可能受 CORS 限制）</li>
                         </ul>
 
@@ -1822,435 +1929,474 @@ function openHelpDialog() {
                         <h4>📂 添加流程说明</h4>
                         <p>粘贴内容后点击「投喂」，根据情况会有不同的流程：</p>
 
-                        <h5>情况一：纯 BV 号</h5>
+                        <h5>情况一：纯 BV 号（不含 bilibili.com）</h5>
                         <ul>
-                            <li>只有 1 个分类 → 直接添加，不弹窗</li>
-                            <li>有多个分类 → 弹窗选择目标分类 → 添加完成</li>
-                            <li><b>不会询问多P</b>，始终当作单集处理</li>
+                            <li>只有 1 个分类 → 直接添加到该分类，不弹窗</li>
+                            <li>有多个分类 → 弹窗选择目标分类 → 选完即添加</li>
+                            <li><b>不会询问多P</b>，始终当作单集处理（想批量添加请用完整链接）</li>
                         </ul>
 
-                        <h5>情况二：完整视频链接</h5>
+                        <h5>情况二：完整视频链接（含 bilibili.com）</h5>
                         <ul>
-                            <li>只有 1 个分类 → 弹窗询问是否多P合集</li>
-                            <li>有多个分类 → 弹窗选择分类 → 接着询问是否多P合集</li>
+                            <li>只有 1 个分类 → 弹窗直接进入「是否多P合集」步骤</li>
+                            <li>有多个分类 → 先选分类 → 再询问是否多P合集</li>
                         </ul>
 
                         <h4>🎯 批量添加多P合集</h4>
                         <p>使用<b>完整链接</b>添加时，选完分类后会进入第二步：</p>
                         <ul>
-                            <li>如果是单集视频 → 点<b>「添加单集」</b>按钮</li>
-                            <li>如果是多P合集 → 填写<b>起始集数</b>（默认为 1）和<b>结束集数</b>（如 24、130），点<b>「批量添加」</b></li>
+                            <li>如果是单集视频 → 点<b>「添加单集」</b>按钮即可</li>
+                            <li>如果是多P合集 → 填写<b>起始集数</b>（默认 1）和<b>结束集数</b>（如 24、130），点<b>「批量添加」</b></li>
                             <li>批量添加后标题格式：<code>自定义名字 - P1</code>、<code>自定义名字 - P2</code> ...</li>
                             <li>没写自定义名字时：<code>BV1xxx - P1</code>、<code>BV1xxx - P2</code> ...</li>
+                            <li>起始集数可以自定义，比如从第 5 集开始添加到第 24 集</li>
                         </ul>
-                        <div class="bili-help-code">示例：粘贴「https://www.bilibili.com/video/BV1xxx 蜡笔小新」→ 选分类 → 起始集 1，结束集 130 → 批量添加</div>
+                        <div class="bili-help-code">示例：粘贴「https://www.bilibili.com/video/BV1xxx 蜡笔小新」<br>→ 选分类 → 起始集 1，结束集 130 → 批量添加<br>→ 生成「蜡笔小新 - P1」~「蜡笔小新 - P130」共 130 个条目</div>
 
                         <h4>⚠️ 注意事项</h4>
                         <ul>
-                            <li>如果想让纯 BV 号也询问多P，请使用完整链接格式</li>
+                            <li>如果想让纯 BV 号也能批量添加多P，请改用完整链接格式</li>
                             <li>番剧链接（<code>/bangumi/play/</code>）暂不支持，请复制播放页的 BV 号</li>
-                            <li>短链展开可能受浏览器安全策略限制，失败时请改用完整链接</li>
-                            <li>同一分类下不会重复添加相同 BV 号的视频</li>
+                            <li>短链展开可能受浏览器 CORS 安全策略限制，失败时请改用完整链接</li>
+                            <li>同一分类下不会重复添加相同 BV 号（含分P标识）的视频</li>
                         </ul>
                     </div>
-                </div>
+                </details>
 
                 <!-- 播放与切换 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">▶️ 播放与上下集切换</div>
+                <details class="bili-help-section">
+                    <summary class="bili-help-title">▶️ 播放与上下集切换</summary>
                     <div class="bili-help-content">
                         <h4>播放视频</h4>
                         <ul>
                             <li>单击列表中任意视频名 → 立即开始播放</li>
-                            <li>当前正在播放的视频会高亮显示（左侧有彩色竖条）</li>
+                            <li>当前正在播放的视频会高亮显示（左侧有彩色竖条标记）</li>
                             <li>视频区采用 B 站移动端播放器，支持暂停、进度条、全屏等基本操作</li>
+                            <li>播放器内操作与 B 站移动版一致，支持手势控制</li>
                         </ul>
 
-                        <h4>上下集切换</h4>
+                        <h4>上下集切换（两种方式）</h4>
+                        <p><b>方式一：导航栏按钮（展开模式）</b></p>
                         <ul>
                             <li>视频区下方有<b>「⏮ 上一集」</b>和<b>「下一集 ⏭」</b>按钮</li>
                             <li>中间显示当前集数位置（如 <code>3 / 24</code>）</li>
-                            <li>到达第一集时「上一集」按钮自动变灰</li>
-                            <li>到达最后一集时「下一集」按钮自动变灰</li>
-                            <li>切集范围仅限<b>当前分类</b>内的视频列表</li>
+                            <li>到达第一集时「上一集」按钮自动变灰不可点击</li>
+                            <li>到达最后一集时「下一集」按钮自动变灰不可点击</li>
                         </ul>
+                        <p><b>方式二：视频区浮层按钮（折叠模式）</b></p>
+                        <ul>
+                            <li>折叠模式下，点击视频区顶部的半透明触发条</li>
+                            <li>左右两侧会浮现「⏮」「⏭」按钮</li>
+                            <li>3 秒无操作后自动隐藏，再次点击触发条可再次唤出</li>
+                        </ul>
+                        <p><em>注意：切集范围仅限<b>当前分类</b>内的视频列表，按列表排列顺序切换。</em></p>
 
                         <h4>折叠模式</h4>
                         <ul>
-                            <li>点击标题栏的 <b>_</b> 按钮 → 隐藏下方列表区，只保留视频画面</li>
-                            <li>折叠后面板变为仅横向可调整大小</li>
+                            <li>点击标题栏的 <b>_</b> 按钮 → 隐藏下方列表区，只保留标题栏 + 视频画面</li>
+                            <li>折叠后面板变为仅横向可调整大小（桌面端）</li>
                             <li>再次点击 <b>▢</b> 按钮恢复完整面板</li>
-                            <li>折叠模式下上下集导航栏也会隐藏</li>
+                            <li>折叠模式下导航栏隐藏，改用视频区浮层按钮切集</li>
+                            <li>适合只想看视频、不需要操作列表的场景</li>
                         </ul>
                     </div>
-                </div>
+                </details>
 
                 <!-- 分类管理 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">📂 分类管理</div>
+                <details class="bili-help-section">
+                    <summary class="bili-help-title">📂 分类管理</summary>
                     <div class="bili-help-content">
                         <h4>创建分类</h4>
                         <ul>
                             <li>在顶部「新分类/系列名称」输入框中填入名字</li>
-                            <li>点击<b>「新建系列」</b>，新分类立即出现在列表中</li>
-                            <li>分类名支持 Emoji，如「🎬 电影」「📺 追番」「🎵 音乐」</li>
-                            <li>不能创建同名分类</li>
+                            <li>点击<b>「新建系列」</b>，新分类立即出现在列表底部</li>
+                            <li>分类名支持 Emoji 和任意字符，如「🎬 电影」「📺 追番」「🎵 音乐」</li>
+                            <li>不能创建同名分类（会静默忽略）</li>
                         </ul>
 
                         <h4>展开/折叠分类</h4>
                         <ul>
-                            <li>点击分类名（或左侧 ⭐ 箭头）→ 展开/折叠该分类的视频列表</li>
+                            <li>点击分类名左侧的 ⭐ 箭头或分类标题 → 展开/折叠该分类的视频列表</li>
                             <li>当前正在播放的分类会自动展开</li>
                             <li>只有一个分类时默认展开</li>
+                            <li>用户手动折叠过的分类会记住状态，切换视频时不会自动展开</li>
                         </ul>
 
                         <h4>重命名分类</h4>
                         <ul>
                             <li>鼠标悬停分类标题 → 右侧出现 <b>✎</b> 笔形按钮 → 点击</li>
-                            <li>在弹出的输入框中填入新名字 → 确认</li>
+                            <li>在弹出的对话框中填入新名字 → 确认</li>
                             <li>分类下的所有视频会保留，正在播放的视频不受影响</li>
-                            <li>不能改成已存在的分类名</li>
+                            <li>不能改成已存在的分类名（会提示重复）</li>
                         </ul>
 
-                        <h4>调整分类顺序</h4>
+                        <h4>调整分类顺序（三种方式）</h4>
                         <ul>
-                            <li>每个分类标题右侧有 <b>↑</b> <b>↓</b> 按钮，点击即可上移/下移</li>
-                            <li>桌面端支持<b>拖拽排序</b>：按住分类标题拖动到目标位置</li>
-                            <li>移动端暂不支持分类拖拽（视频拖拽正常）</li>
+                            <li><b>按钮方式：</b>每个分类标题右侧有 <b>↑</b> <b>↓</b> 按钮，点击即可上移/下移</li>
+                            <li><b>桌面端拖拽：</b>按住分类标题拖动到目标位置，目标处会出现蓝色指示线</li>
+                            <li><b>移动端：</b>长按分类标题约 0.5 秒进入拖拽模式（也可使用 ↑↓ 按钮）</li>
                         </ul>
 
                         <h4>删除分类</h4>
                         <ul>
                             <li>点击分类标题最右侧的 <b>×</b> 按钮</li>
-                            <li>如果分类内有视频，会二次确认</li>
-                            <li>删除后无法恢复，请谨慎操作</li>
-                            <li>如果删除的是正在播放的分类，播放会停止</li>
+                            <li>如果分类内有视频，会弹出二次确认对话框</li>
+                            <li>空分类直接删除，不会二次确认</li>
+                            <li>删除后<b>无法恢复</b>，请谨慎操作</li>
+                            <li>如果删除的是正在播放的分类，播放会停止，视频区回到待机状态</li>
                         </ul>
                     </div>
-                </div>
+                </details>
 
                 <!-- 视频管理 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">🎞️ 视频管理</div>
+                <details class="bili-help-section">
+                    <summary class="bili-help-title">🎞️ 视频管理</summary>
                     <div class="bili-help-content">
                         <h4>重命名视频（两种方式）</h4>
                         <ul>
-                            <li><b>方式一：</b>鼠标悬停视频名 → 右侧出现 <b>✎</b> → 点击进入编辑</li>
-                            <li><b>方式二：</b>直接<b>双击</b>视频名进入编辑</li>
-                            <li>编辑时：按 <kbd>Enter</kbd> 保存 / 按 <kbd>Esc</kbd> 取消 / 点击外部自动保存</li>
+                            <li><b>方式一：</b>鼠标悬停视频条目 → 右侧出现 <b>✎</b> 笔形按钮 → 点击进入编辑模式</li>
+                            <li><b>方式二：</b>直接<b>双击</b>视频名文字进入编辑模式</li>
+                            <li>编辑时按 <kbd>Enter</kbd> 保存 / 按 <kbd>Esc</kbd> 取消 / 点击其他区域自动保存</li>
                             <li>最多输入 50 个字符，支持 Emoji 和特殊符号</li>
+                            <li>编辑过程中不会触发拖拽排序</li>
                         </ul>
 
                         <h4>移动视频到其他分类</h4>
                         <ul>
-                            <li>鼠标悬停视频 → 出现 <b>↗</b> 移动按钮 → 点击</li>
-                            <li>弹出分类选择面板，点击目标分类即可完成移动</li>
-                            <li>如果移动的是正在播放的视频，播放状态会跟随到新分类</li>
+                            <li>鼠标悬停视频条目 → 出现 <b>↗</b> 移动按钮 → 点击</li>
+                            <li>弹出分类选择面板（不显示当前所在分类），点击目标分类即可完成移动</li>
+                            <li>如果移动的是正在播放的视频，播放状态会跟随到新分类（不会中断）</li>
+                            <li>移动后视频会出现在目标分类的末尾</li>
                         </ul>
 
                         <h4>调整视频顺序</h4>
                         <ul>
-                            <li>桌面端：直接<b>拖拽</b>视频条目到目标位置</li>
-                            <li>移动端：<b>长按</b>视频条目约 0.4 秒，进入拖拽模式后移动到目标位置</li>
-                            <li>拖拽过程中目标位置会显示蓝色指示线</li>
+                            <li><b>桌面端：</b>直接<b>拖拽</b>视频条目到目标位置（目标处出现蓝色指示线）</li>
+                            <li><b>移动端：</b><b>长按</b>视频条目约 0.4 秒，进入拖拽模式后移动手指到目标位置释放</li>
                             <li>排序会影响上下集切换的顺序</li>
+                            <li>排序操作实时保存，无需额外确认</li>
                         </ul>
 
                         <h4>删除视频</h4>
                         <ul>
                             <li>点击视频条目最右侧的 <b>×</b> 按钮</li>
-                            <li>删除后无法恢复</li>
+                            <li>删除后<b>无法恢复</b>（不会二次确认）</li>
                             <li>如果删除的是正在播放的视频，播放会停止</li>
+                            <li>建议重要视频先移动到备份分类再删除原条目</li>
                         </ul>
                     </div>
-                </div>
+                </details>
 
                 <!-- 悬浮球 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">🐱 猫耳悬浮球</div>
+                <details class="bili-help-section">
+                    <summary class="bili-help-title">🐱 猫耳悬浮球</summary>
                     <div class="bili-help-content">
                         <h4>进入悬浮球模式</h4>
                         <ul>
                             <li>点击主面板标题栏右侧的 <b>×</b> 关闭按钮</li>
                             <li>面板会缩成一个带猫耳的圆形悬浮球</li>
-                            <li>视频播放不会中断（iframe 保持加载）</li>
+                            <li>视频 iframe 保持加载，不会中断（但不一定继续播放，取决于浏览器策略）</li>
                         </ul>
 
                         <h4>悬浮球操作</h4>
                         <ul>
                             <li><b>单击/轻触</b> → 恢复完整面板</li>
                             <li><b>拖拽</b> → 移动到屏幕任意位置（桌面和移动端均支持）</li>
-                            <li><b>悬停</b> → 轻微放大（视觉反馈）</li>
+                            <li><b>悬停</b> → 轻微放大动画（视觉反馈）</li>
+                            <li>移动距离超过 10px 判定为拖拽，不会误触恢复面板</li>
                         </ul>
 
                         <h4>默认启动方式</h4>
                         <ul>
                             <li>插件默认以悬浮球模式启动（节省屏幕空间）</li>
-                            <li>可在设置中取消「以悬浮球模式启动」选项（当前版本暂未实现此设置项）</li>
-                            <li>悬浮球位置会自动保存，刷新后恢复</li>
+                            <li>悬浮球位置在桌面端默认 左侧 40px、顶部 40%</li>
+                            <li>移动端默认 左侧 15px、顶部 40%</li>
+                            <li>每次拖拽后位置会自动保存，刷新页面后恢复</li>
                         </ul>
 
-                        <h4>自定义悬浮球外观（在设置中调整）</h4>
+                        <h4>自定义悬浮球外观（在 ⚙ 设置中调整）</h4>
+                        <p><b>🔘 尺寸：</b></p>
                         <ul>
-                            <li><b>尺寸：</b>大（72px）/ 中（58px）/ 小（44px）</li>
-                            <li><b>头像：</b>支持 Emoji 颜文字 / 图片 URL / 本地上传</li>
-                            <li><b>外框：</b>可上传自定义外框图片替代默认猫耳（支持 GIF/WebP 动图）</li>
-                            <li><b>外框调节：</b>缩放大小（30%-200%）、水平/垂直偏移、层级（前/后）</li>
-                            <li><b>隐藏外框：</b>勾选后只显示头像圆圈（用于测试新外框图片）</li>
+                            <li>大（72×76px）/ 中（58×62px，推荐）/ 小（44×48px）</li>
+                            <li>移动端「小」尺寸会额外缩小 0.85 倍</li>
                         </ul>
+                        <p><b>🐱 头像（显示在中心圆圈内）：</b></p>
+                        <ul>
+                            <li>Emoji / 颜文字：输入任意 Emoji 或文字表情（如 🐾、⎚˕⎚）</li>
+                            <li>图片 URL：输入网络图片地址</li>
+                            <li>本地上传：从设备选择图片文件（建议 ≤ 2MB）</li>
+                        </ul>
+                        <p><b>🎀 外框（替代默认猫耳+圆圈边框）：</b></p>
+                        <ul>
+                            <li>上传自定义外框图片（支持 PNG / GIF / WebP 动图）</li>
+                            <li>建议使用<b>中心透明、四周有图案</b>的 PNG 素材</li>
+                            <li><b>外框大小：</b>30% ~ 200% 无级缩放</li>
+                            <li><b>水平偏移：</b>-50px ~ +50px（微调外框位置）</li>
+                            <li><b>垂直偏移：</b>-50px ~ +50px</li>
+                            <li><b>外框层级：</b>「外框在前」（盖住头像边缘）或「外框在后」（头像完全在前）</li>
+                            <li><b>隐藏外框：</b>勾选后只保留头像圆圈（用于对比测试新外框效果）</li>
+                        </ul>
+                        <p>设置面板中有<b>实时预览</b>区域，调整参数时可即时看到效果。</p>
                     </div>
-                </div>
+                </details>
 
                 <!-- 主题与外观 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">🎨 主题与外观设置</div>
+                <details class="bili-help-section">
+                    <summary class="bili-help-title">🎨 主题与外观设置</summary>
                     <div class="bili-help-content">
                         <p>点击标题栏的 <b>⚙</b> 按钮打开设置面板。</p>
 
                         <h4>🎨 10 套预设主题</h4>
                         <ul>
-                            <li>亮色系：🩷 樱花粉 / 🌼 嫩黄 / 🌿 淡绿 / 🌊 深海蓝 / 🌅 落日橘 / 💜 薰衣草</li>
-                            <li>暗色系：🕶️ 毛玻璃黑 / 🌸 夜樱 / ☕ 摩卡棕</li>
-                            <li>透明系：🪟 毛玻璃白</li>
+                            <li><b>亮色系：</b>🩷 樱花粉 / 🌼 嫩黄 / 🌿 淡绿 / 🌊 深海蓝 / 🌅 落日橘 / 💜 薰衣草</li>
+                            <li><b>暗色系：</b>🕶️ 毛玻璃黑 / 🌸 夜樱 / ☕ 摩卡棕</li>
+                            <li><b>透明系：</b>🪟 毛玻璃白</li>
                         </ul>
+                        <p>选择主题后即时预览生效，点击「保存」确认。切换主题会同步更新标题栏 Emoji、悬浮球默认头像等。</p>
 
                         <h4>🖼️ 悬浮窗背景图片</h4>
                         <ul>
-                            <li>支持上传图片作为面板背景（含 GIF / WebP 动图）</li>
-                            <li><b>背景模式：</b>
-                                <ul>
-                                    <li>「作为背景」— 图片在面板底层，保留原边框样式</li>
-                                    <li>「替换边框」— 图片作为包边，原边框隐藏（适合 PNG 边框素材）</li>
-                                </ul>
-                            </li>
-                            <li><b>填充方式：</b>覆盖（推荐）/ 包含 / 平铺 / 拉伸</li>
-                            <li><b>透明度：</b>0% ~ 100% 无级调节</li>
+                            <li>支持上传图片作为面板背景，含 GIF / WebP <b>动图</b></li>
+                            <li><b>背景模式（二选一）：</b></li>
+                        </ul>
+                        <ul>
+                            <li>「🖼️ 作为背景」— 图片在面板底层，保留原有主题边框样式，适合纹理/壁纸</li>
+                            <li>「🎀 替换边框」— 图片作为包边素材，原边框隐藏，适合四周有花纹的透明 PNG</li>
+                        </ul>
+                        <ul>
+                            <li><b>填充方式：</b>覆盖（推荐，自动裁剪铺满）/ 包含（完整显示留白）/ 平铺（重复排列）/ 拉伸（变形铺满）</li>
+                            <li><b>透明度：</b>0% ~ 100% 无级调节滑块</li>
+                            <li>设置面板中有缩略图预览</li>
+                            <li>建议图片大小控制在 <b>2-5MB</b> 以内</li>
                         </ul>
 
                         <h4>🎨 自定义配色</h4>
                         <ul>
                             <li>可单独调整 6 种颜色：主色、主色浅、主色深、辅色、面板背景、文字颜色</li>
+                            <li>使用系统颜色选择器（点击色块弹出）</li>
                             <li>修改任一颜色后自动标记为「自定义配色」模式</li>
-                            <li>点击「重置配色」清除自定义，恢复当前主题预设</li>
-                            <li>点击「应用当前主题预设」将颜色选择器重置为主题默认值</li>
+                            <li>点击<b>「↺ 重置配色」</b>清除自定义，恢复当前主题预设色</li>
+                            <li>点击<b>「✨ 应用当前主题预设」</b>将选择器重置为当前主题默认值（方便微调）</li>
                         </ul>
+                        <p><em>提示：部分暗色主题的颜色包含透明度（rgba），颜色选择器无法直接编辑透明度通道，建议使用纯色近似值。</em></p>
                     </div>
-                </div>
+                </details>
 
                 <!-- 数据管理 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">💾 数据保存与导入导出</div>
+                <details class="bili-help-section">
+                    <summary class="bili-help-title">💾 数据保存与导入导出</summary>
                     <div class="bili-help-content">
                         <h4>自动保存机制</h4>
                         <ul>
-                            <li>所有操作（添加/删除/排序/重命名/切换主题等）都会<b>立即自动保存</b></li>
-                            <li>双重保存策略：浏览器 <code>localStorage</code> + SillyTavern 扩展配置</li>
+                            <li>所有操作（添加/删除/排序/重命名/切换主题/拖拽等）都会<b>立即自动保存</b></li>
+                            <li>双重保存策略：浏览器 <code>localStorage</code> + SillyTavern 扩展配置（<code>settings.json</code>）</li>
                             <li>刷新页面或重启酒馆后自动恢复所有状态</li>
+                            <li>无需手动点「保存」（设置面板的保存按钮用于确认设置变更）</li>
                         </ul>
 
                         <h4>保存的内容包括</h4>
                         <ul>
-                            <li>所有分类和视频列表（含排序）</li>
-                            <li>当前播放的视频和分类</li>
-                            <li>面板位置、大小、折叠状态</li>
-                            <li>主题、配色、背景图片、悬浮球外观</li>
+                            <li>所有分类和视频列表（含排列顺序）</li>
+                            <li>当前播放的视频和所属分类</li>
+                            <li>面板位置、大小</li>
+                            <li>主题、自定义配色、背景图片（Base64）</li>
+                            <li>悬浮球外观设置（头像、外框、缩放、偏移等）</li>
                         </ul>
-
                         <h4>📤 导出播放列表</h4>
                         <ul>
-                            <li>在设置面板底部点击「📤 导出播放列表」</li>
-                            <li>自动下载一个 JSON 文件（如 <code>BiliPlayer_backup_2025-01-01.json</code>）</li>
-                            <li>包含所有分类和视频数据，可用于备份或迁移到其他设备</li>
+                            <li>在设置面板底部点击<b>「📤 导出播放列表」</b></li>
+                            <li>自动下载一个 JSON 文件（文件名示例：<code>BiliPlayer_backup_2025-07-11.json</code>）</li>
+                            <li>包含所有分类名和视频数据（BV号 + 标题）</li>
+                            <li>可用于备份或迁移到其他设备/浏览器</li>
                         </ul>
-
                         <h4>📥 导入播放列表</h4>
                         <ul>
-                            <li>点击「📥 导入播放列表」，选择之前导出的 JSON 文件</li>
+                            <li>点击<b>「📥 导入播放列表」</b>，选择之前导出的 JSON 文件</li>
                             <li>导入采用<b>合并模式</b>：新分类和新视频会添加到现有列表中，不会覆盖已有数据</li>
                             <li>同一分类下相同 BV 号的视频不会重复导入</li>
+                            <li>导入完成后会提示新增了多少个分类和视频</li>
                         </ul>
 
                         <h4>⚠️ 数据安全提醒</h4>
                         <ul>
                             <li>清除浏览器缓存/数据会丢失 localStorage 中的数据</li>
-                            <li>建议定期使用导出功能备份</li>
-                            <li>上传的图片（背景/外框/头像）以 Base64 存储，大文件可能影响性能</li>
-                            <li>图片建议控制在 2-5MB 以内</li>
+                            <li>建议定期使用导出功能备份（尤其是大量视频时）</li>
+                            <li>上传的图片（背景/外框/头像）以 Base64 编码存储，大文件会增加配置体积</li>
+                            <li>图片建议控制在 2-5MB 以内，避免影响保存和加载性能</li>
+                            <li>SillyTavern 的 <code>public/settings.json</code> 中也有一份备份数据</li>
                         </ul>
                     </div>
-                </div>
+                </details>
 
                 <!-- 面板控制 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">⌨️ 面板控制与快捷操作</div>
+                <details class="bili-help-section">
+                    <summary class="bili-help-title">⌨️ 面板控制与快捷操作</summary>
                     <div class="bili-help-content">
                         <h4>标题栏按钮（从左到右）</h4>
                         <ul>
-                            <li><b>?</b> — 打开本使用说明</li>
-                            <li><b>⚙</b> — 打开设置面板</li>
-                            <li><b>_</b> — 折叠/展开播放列表区域（只看视频时很实用）</li>
-                            <li><b>×</b> — 缩成猫耳悬浮球</li>
+                            <li><b>?</b> — 打开本使用说明弹窗</li>
+                            <li><b>⚙</b> — 打开设置面板（主题/外观/数据管理）</li>
+                            <li><b>_</b> — 折叠模式：隐藏列表区域，只保留标题栏+视频画面（再次点击 <b>▢</b> 恢复）</li>
+                            <li><b>×</b> — 缩成猫耳悬浮球（点击悬浮球恢复面板）</li>
                         </ul>
 
                         <h4>面板操作</h4>
                         <ul>
-                            <li><b>拖拽标题栏</b> → 移动面板到任意位置</li>
-                            <li><b>拖拽右下角</b> → 调整面板大小（仅桌面端，移动端自动适配）</li>
-                            <li>面板最小尺寸：290×240px，最大尺寸：1000×900px</li>
+                            <li><b>拖拽标题栏</b> → 移动面板到屏幕任意位置</li>
+                            <li><b>拖拽右下角</b> → 调整面板大小（仅桌面端，移动端禁用防误触）</li>
+                            <li>面板最小尺寸：290×240px</li>
+                            <li>面板最大尺寸：1000×900px</li>
+                            <li>面板位置和大小会自动保存，刷新后恢复</li>
+                            <li>如果面板跑到屏幕外，刷新页面会自动复位到安全位置</li>
                         </ul>
 
                         <h4>SillyTavern 集成</h4>
                         <ul>
-                            <li>扩展设置菜单中有 BiliPlayer 开关（运行中/已关闭）</li>
-                            <li>关闭后完全隐藏面板和悬浮球，释放视频资源</li>
-                            <li>重新开启后恢复上次的播放状态</li>
-                            <li>支持斜杠命令 <code>/bili</code> 快速开关</li>
+                            <li>扩展设置菜单（Extensions）顶部有 BiliPlayer 开关（运行中 / 已关闭）</li>
+                            <li>关闭后完全隐藏面板和悬浮球，同时释放视频 iframe 资源</li>
+                            <li>重新开启后恢复上次的播放状态和位置</li>
+                            <li>支持斜杠命令 <code>/bili</code> 在对话框中快速开关播放器</li>
                         </ul>
                     </div>
-                </div>
+                </details>
 
                 <!-- 移动端适配 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">📱 移动端适配说明</div>
+                <details class="bili-help-section">
+                    <summary class="bili-help-title">📱 移动端适配说明</summary>
                     <div class="bili-help-content">
                         <h4>自动适配特性</h4>
                         <ul>
                             <li>面板自动居中，宽度占屏幕 94%（最大 500px），高度占 82%（最大 700px）</li>
-                            <li>所有按钮和输入框自动放大，适合手指操作</li>
-                            <li>禁用拖拽调整大小（防止误触）</li>
+                            <li>所有按钮和输入框自动放大，适合手指操作（最小触摸区域 32px+）</li>
+                            <li>禁用拖拽调整大小（防止与滚动操作冲突）</li>
                             <li>悬浮球默认位于屏幕左侧 15px 处</li>
+                            <li>支持安全区域适配（刘海屏、底部横条、圆角屏幕）</li>
                         </ul>
 
                         <h4>触屏操作差异</h4>
                         <ul>
-                            <li>视频排序：<b>长按 0.4 秒</b>后进入拖拽模式（桌面端直接拖拽）</li>
-                            <li>分类排序：移动端暂不支持拖拽，请使用 <b>↑ ↓</b> 按钮</li>
-                            <li>重命名时虚拟键盘弹出不会误触其他按钮</li>
-                            <li>悬浮球：轻触恢复面板，长按拖拽移动位置</li>
+                            <li><b>视频排序：</b>长按视频条目约 <b>0.4 秒</b>后进入拖拽模式，移动手指到目标位置释放</li>
+                            <li><b>分类排序：</b>长按分类标题约 <b>0.5 秒</b>进入拖拽（也可使用 ↑↓ 按钮更方便）</li>
+                            <li><b>重命名：</b>虚拟键盘弹出时不会误触其他按钮（有延迟保护）</li>
+                            <li><b>悬浮球：</b>轻触恢复面板；按住拖动超过 10px 视为拖拽移动位置</li>
+                            <li><b>面板拖动：</b>按住标题栏滑动即可移动面板位置</li>
                         </ul>
 
                         <h4>浏览器兼容性</h4>
                         <ul>
-                            <li>✅ iOS Safari、Android Chrome、微信内置浏览器</li>
-                            <li>✅ 支持安全区域适配（刘海屏、底部横条）</li>
-                            <li>⚠️ 毛玻璃主题在部分旧系统上可能不生效</li>
-                            <li>⚠️ 小尺寸悬浮球在移动端会额外缩小 0.85 倍</li>
+                            <li>✅ iOS Safari 15+、Android Chrome 90+</li>
+                            <li>✅ 微信内置浏览器、QQ 浏览器</li>
+                            <li>✅ SillyTavern 移动端访问（手机/平板）</li>
+                            <li>⚠️ 毛玻璃主题（glass-light / glass-dark）在部分旧系统上可能不生效（降级为半透明背景）</li>
+                            <li>⚠️ 小尺寸悬浮球在移动端会额外缩小 0.85 倍（保证不遮挡内容）</li>
                         </ul>
                     </div>
-                </div>
+                </details>
 
                 <!-- 常见问题 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">❓ 常见问题</div>
+                <details class="bili-help-section">
+                    <summary class="bili-help-title">❓ 常见问题 FAQ</summary>
                     <div class="bili-help-content">
                         <h4>Q: 为什么视频无法播放 / 黑屏？</h4>
-                        <p>A: 播放器使用 B 站移动端嵌入地址，部分视频可能有版权限制或地区限制。尝试刷新页面或更换视频。</p>
+                        <p>A: 播放器使用 B 站移动端嵌入地址，部分视频可能有版权限制或地区限制。尝试：① 刷新页面 ② 更换其他视频测试 ③ 确认 BV 号正确。</p>
 
                         <h4>Q: 粘贴链接后弹出的选分类面板是什么？</h4>
-                        <p>A: 当你有多个分类时，插件需要知道你想把视频加到哪里。只有一个分类时不会弹出此面板。</p>
+                        <p>A: 当你有多个分类时，插件需要知道你想把视频加到哪个分类。只有一个分类时不会弹出（直接添加）。</p>
 
                         <h4>Q: 纯 BV 号为什么不询问多P集数？</h4>
-                        <p>A: 为了简化操作流程。如果你需要批量添加多P合集，请使用完整视频链接格式。</p>
+                        <p>A: 为了简化日常操作流程。如果需要批量添加多P合集，请使用完整视频链接格式（包含 bilibili.com）。</p>
 
                         <h4>Q: 批量添加后标题都是「BV号 - P1」格式，能改吗？</h4>
-                        <p>A: 可以！有两种方式：<br>
-                        ① 添加时在链接后加空格+名字（如 <code>https://...BV1xxx 蜡笔小新</code>），会自动生成「蜡笔小新 - P1」格式<br>
+                        <p>A: 可以！两种方式：<br>
+                        ① 添加时在链接后加空格+名字（如 <code>https://...BV1xxx 蜡笔小新</code>），自动生成「蜡笔小新 - P1」格式<br>
                         ② 添加后双击视频名逐个修改</p>
 
                         <h4>Q: 短链（b23.tv）展开失败怎么办？</h4>
                         <p>A: 受浏览器 CORS 安全策略限制，短链展开可能被拦截。建议在 B 站打开视频后复制浏览器地址栏中的完整链接。</p>
 
                         <h4>Q: 面板位置跑到屏幕外面了怎么办？</h4>
-                        <p>A: 刷新页面即可。插件会自动检测面板是否在可视区域内，超出时会自动复位到安全位置。</p>
-
-                        <h4>Q: 悬浮球位置保存了吗？</h4>
-                        <p>A: 保存了！每次拖拽悬浮球后会自动保存位置，刷新页面后会恢复到上次的位置。</p>
+                        <p>A: 刷新页面即可。插件启动时会自动检测面板是否在可视区域内，超出时会自动复位。</p>
 
                         <h4>Q: 为什么移动端看不到调整大小的功能？</h4>
-                        <p>A: 移动端自动禁用了拖拽调整大小功能（防止误触），面板会自动适配屏幕尺寸。</p>
+                        <p>A: 移动端禁用了 resize 功能（防止与滚动操作冲突），面板会自动适配屏幕尺寸。</p>
 
                         <h4>Q: 毛玻璃主题在某些浏览器不生效？</h4>
-                        <p>A: 毛玻璃效果需要浏览器支持 <code>backdrop-filter</code> CSS 属性。部分老旧浏览器或移动端系统可能不支持，建议使用实色主题。</p>
+                        <p>A: 需要浏览器支持 <code>backdrop-filter</code> CSS 属性。iOS Safari 15+、Chrome 76+ 均支持。旧版浏览器建议使用实色主题。</p>
 
                         <h4>Q: 播放列表突然清空了？</h4>
-                        <p>A: 可能是浏览器缓存被清理导致 localStorage 数据丢失。建议定期使用「导出播放列表」功能备份数据，或检查 SillyTavern 的配置文件 <code>public/settings.json</code>。</p>
-
-                        <h4>Q: 分类重命名后原来的视频还在吗？</h4>
-                        <p>A: 在的！重命名只是改了分类名字，分类下的所有视频都会保留，正在播放的视频也不受影响。</p>
+                        <p>A: 可能是浏览器缓存被清理导致 localStorage 数据丢失。建议：① 定期导出备份 ② 检查 SillyTavern 的 <code>public/settings.json</code> 中是否有备份。</p>
 
                         <h4>Q: 上传的图片会占用很多空间吗？</h4>
-                        <p>A: 图片以 Base64 编码存储在配置中，文件较大时会增加存储占用。建议：<br>
-                        • 背景图片控制在 2-5MB 以内<br>
-                        • 悬浮球头像/外框控制在 500KB-2MB<br>
-                        • 避免上传超高分辨率图片（1920×1080 足够）</p>
+                        <p>A: 图片以 Base64 编码存储在配置中。建议：背景图 ≤ 5MB、头像/外框 ≤ 2MB、避免超高分辨率（1920×1080 足够）。</p>
 
                         <h4>Q: 能否添加其他视频平台的视频？</h4>
-                        <p>A: 目前仅支持 B 站视频。其他平台的嵌入播放器接口各不相同，暂时没有计划支持。</p>
+                        <p>A: 目前仅支持 B 站视频（使用 B 站移动端嵌入播放器接口）。其他平台暂无计划支持。</p>
 
                         <h4>Q: 删除操作能撤销吗？</h4>
-                        <p>A: 不能！删除分类、删除视频都是不可逆操作。建议重要内容先移动到「备份」分类中，或使用导出功能备份整个列表。</p>
-
-                        <h4>Q: 为什么有些视频标题是乱码？</h4>
-                        <p>A: 插件不会自动获取视频标题（避免频繁请求 B 站 API）。建议添加时手动输入自定义名字，或添加后双击修改。</p>
+                        <p>A: 不能。删除分类和视频都是不可逆操作。建议重要内容先用导出功能备份，或移动到「备份」分类。</p>
 
                         <h4>Q: 拖拽排序不灵敏怎么办？</h4>
-                        <p>A: 桌面端直接拖拽即可；移动端需要<b>长按</b>约 0.4-0.5 秒后才能进入拖拽模式。如果仍不灵敏，可能是浏览器兼容性问题，尝试使用「↑ ↓」按钮调整顺序。</p>
-
-                        <h4>Q: 设置面板的颜色选择器不准确？</h4>
-                        <p>A: 部分暗色主题使用了 rgba 透明色，颜色选择器无法直接编辑透明度。建议使用预设主题，或在「自定义配色」中调整纯色版本。</p>
+                        <p>A: 桌面端直接拖拽即可；移动端需要<b>长按</b> 0.4~0.5 秒后才进入拖拽模式。如仍不灵敏，使用「↑ ↓」按钮替代。</p>
 
                         <h4>Q: 番剧链接为什么不支持？</h4>
-                        <p>A: B 站番剧链接（<code>/bangumi/play/</code>）的嵌入播放器接口与普通视频不同，且受版权限制更严格。建议在网页打开番剧，找到播放页面的 BV 号（在地址栏或分享按钮中），然后用 BV 号添加。</p>
+                        <p>A: B 站番剧（<code>/bangumi/play/</code>）的嵌入接口与普通视频不同，且版权限制更严格。建议在网页找到播放页的 BV 号后用 BV 号添加。</p>
 
-                        <h4>Q: 移动端分类拖拽为什么不能用？</h4>
-                        <p>A: 移动端分类拖拽功能存在交互冲突，已暂时禁用。请使用分类标题右侧的「↑ ↓」按钮调整顺序。视频拖拽排序在移动端正常可用（长按 0.4 秒）。</p>
+                        <h4>Q: 为什么有些视频标题是 BV 号？</h4>
+                        <p>A: 插件不会自动获取视频标题（避免频繁请求 B 站 API 触发风控）。建议添加时手动输入自定义名字（链接后加空格+名字），或添加后双击修改。</p>
                     </div>
-                </div>
+                </details>
 
                 <!-- 高级技巧 -->
-                <div class="bili-help-section">
-                    <div class="bili-help-title">🎓 高级技巧</div>
+                <details class="bili-help-section">
+                    <summary class="bili-help-title">🎓 高级技巧与最佳实践</summary>
                     <div class="bili-help-content">
                         <h4>💡 视频管理技巧</h4>
                         <ul>
-                            <li>创建「🎬 待看」分类作为临时收藏夹，看完后移动到对应分类</li>
-                            <li>使用 Emoji 前缀区分分类类型（如 📺 追番、🎥 电影、🎵 音乐MV）</li>
-                            <li>批量添加时先填起始集数，可以跳过前面已看过的集数</li>
-                            <li>重命名时可以加「✓」标记已看完的视频，如「蜡笔小新 EP1 ✓」</li>
+                            <li>创建「🎬 待看」分类作为临时收藏夹，看完后移动到对应分类或删除</li>
+                            <li>使用 Emoji 前缀区分分类类型：📺 追番、🎥 电影、🎵 音乐MV、📚 学习</li>
+                            <li>批量添加时可自定义起始集数，跳过已看过的部分（如从第 5 集开始）</li>
+                            <li>重命名时加标记：「蜡笔小新 EP1 ✓」表示已看完</li>
+                            <li>同一部番可以分多次添加：先加 1-12 集，看完后再加 13-24 集</li>
                         </ul>
 
                         <h4>🎨 美化技巧</h4>
                         <ul>
-                            <li>悬浮球外框建议使用<b>透明PNG</b>，中心留空，四周有图案装饰</li>
-                            <li>面板背景图「替换边框」模式适合<b>边框素材</b>（四周有花纹的PNG）</li>
-                            <li>面板背景图「作为背景」模式适合<b>纹理或壁纸</b>（支持GIF动图）</li>
-                            <li>暗色主题配暗色背景图效果更佳，亮色主题同理</li>
-                            <li>自定义配色时，建议主色和辅色对比度不要太低，保证可读性</li>
+                            <li>悬浮球外框建议使用<b>透明 PNG</b>，中心留空给头像，四周有装饰图案</li>
+                            <li>面板背景图「替换边框」模式适合<b>边框素材</b>（四周花纹、中间透明的 PNG）</li>
+                            <li>面板背景图「作为背景」模式适合<b>纹理壁纸</b>（GIF 动图效果很棒）</li>
+                            <li>暗色主题搭配暗色调背景图效果更协调，亮色主题同理</li>
+                            <li>自定义配色时确保主色与背景色有足够对比度，保证文字可读性</li>
+                            <li>外框缩放 + 偏移配合使用，可精确对齐不规则形状的外框素材</li>
                         </ul>
 
                         <h4>⚡ 效率技巧</h4>
                         <ul>
                             <li>在 SillyTavern 对话框中输入 <code>/bili</code> 可快速开关播放器</li>
-                            <li>折叠模式 + 悬浮窗背景图 = 精简美观的小窗播放器</li>
-                            <li>移动端建议使用悬浮球启动，节省屏幕空间</li>
-                            <li>桌面端可以把面板缩到屏幕角落，随用随开</li>
+                            <li>折叠模式 + 调小面板宽度 = 精简的小窗播放器（不干扰聊天）</li>
+                            <li>移动端建议默认以悬浮球启动，需要操作时再点开</li>
+                            <li>桌面端可以把面板拖到屏幕边缘角落，边聊天边看视频</li>
+                            <li>如果经常在同一分类中切换视频，善用上下集按钮比点击列表更快</li>
                         </ul>
 
-                        <h4>🔧 故障排查</h4>
+                        <h4>🔧 故障排查清单</h4>
                         <ul>
-                            <li>视频加载慢 → 检查网络连接，或刷新页面重新加载</li>
-                            <li>设置不生效 → 点击「保存」后刷新页面</li>
-                            <li>面板消失了 → 在扩展设置菜单中点击 BiliPlayer 开关重新开启</li>
-                            <li>数据丢失了 → 检查 SillyTavern 的 <code>public/settings.json</code> 文件</li>
+                            <li>视频加载慢 → 检查网络连接 / 刷新页面 / 确认 BV 号有效</li>
+                            <li>设置不生效 → 确认点击了「保存」按钮 / 刷新页面</li>
+                            <li>面板消失了 → 在 Extensions 设置菜单中重新开启 BiliPlayer 开关</li>
+                            <li>数据丢失了 → 检查 SillyTavern 的 <code>public/settings.json</code></li>
+                            <li>悬浮球不见了 → 可能拖到了屏幕边缘外，刷新页面恢复默认位置</li>
+                            <li>外框图片不显示 → 确认图片格式正确（PNG/GIF/WebP）且大小 ≤ 5MB</li>
                         </ul>
                     </div>
-                </div>
+                </details>
 
                 <!-- 页脚 -->
                 <div class="bili-help-footer">
-                    🐾 BiliPlayer v2.0.0 · 让小主人看电影更开心~<br>
-                    <span style="font-size:10px; opacity:0.8;">💖 特别鸣谢：本插件底层核心逻辑由 <b>老农民</b> 老师提供支持</span><br>
-                    <a href="https://github.com/yangtfei204-hub/SillyTavern-BiliPlayer" target="_blank" style="font-size:11px;margin-top:8px;display:inline-block;color:var(--kp-primary);text-decoration:none;">📄 查看项目主页 & 完整文档</a>
+                    <div class="bili-help-footer-content">
+                        <p>🐾 BiliPlayer v2.0.0 · 让小主人看视频更开心~</p>
+                        <p style="font-size:10px; opacity:0.8;">💖 特别鸣谢：本插件底层核心逻辑由 <b>老农民</b> 老师提供支持</p>
+                        <p><a href="https://github.com/yangtfei204-hub/SillyTavern-BiliPlayer" target="_blank">📄 查看项目主页 & 完整文档</a></p>
+                    </div>
                 </div>
             </div>
         </div>

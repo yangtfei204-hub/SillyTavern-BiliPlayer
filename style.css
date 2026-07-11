@@ -1465,6 +1465,62 @@
     margin-bottom: 16px;
 }
 
+/* ========== 使用说明折叠栏样式 ========== */
+details.bili-help-section {
+    margin-bottom: 12px;
+    border: 1.5px solid var(--kp-primary-light);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+
+details.bili-help-section[open] {
+    border-color: var(--kp-primary);
+}
+
+details.bili-help-section > summary.bili-help-title {
+    cursor: pointer;
+    padding: 10px 14px;
+    margin: 0;
+    border-bottom: none;
+    background: var(--kp-bg-soft);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    user-select: none;
+    transition: background 0.2s;
+}
+
+details.bili-help-section > summary.bili-help-title:hover {
+    background: var(--kp-primary-light);
+}
+
+details.bili-help-section > summary.bili-help-title::-webkit-details-marker {
+    display: none;
+}
+
+details.bili-help-section > summary.bili-help-title::before {
+    content: '▶';
+    font-size: 9px;
+    color: var(--kp-primary-deep);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+    margin-right: 6px;
+}
+
+details.bili-help-section[open] > summary.bili-help-title::before {
+    transform: rotate(90deg);
+}
+
+details.bili-help-section[open] > summary.bili-help-title {
+    border-bottom: 1.5px dashed var(--kp-primary-light);
+}
+
+details.bili-help-section > .bili-help-content {
+    padding: 12px 14px;
+}
+
 .bili-help-title {
     font-size: 13px;
     font-weight: 800;
@@ -2535,5 +2591,131 @@
     .bili-details.bili-group-dragging {
         opacity: 0.35;
         transform: scale(0.96);
+    }
+}
+
+/* ========== ⭐ 折叠模式 - 视频遮罩上下集浮层 ========== */
+.bili-ext-overlay-nav {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 15;
+    pointer-events: none;
+    display: none;
+}
+
+/* 折叠模式下才启用 */
+#bili-player-extension-panel.bili-collapsed-mode .bili-ext-overlay-nav {
+    display: block;
+}
+
+/* 遮罩点击区域 - 只覆盖视频顶部窄条作为触发区 */
+.bili-ext-overlay-trigger {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 28px;           /* 只占顶部 28px */
+    pointer-events: auto;   /* 始终可点击 */
+    cursor: pointer;
+    z-index: 1;
+    /* 微弱渐变提示用户这里可以点 */
+    background: linear-gradient(to bottom, rgba(0,0,0,0.08), transparent);
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.bili-ext-overlay-trigger:hover {
+    opacity: 1;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.15), transparent);
+}
+
+/* 按钮激活时隐藏触发条（不需要了，按钮自己会处理） */
+.bili-ext-overlay-nav.active .bili-ext-overlay-trigger {
+    pointer-events: auto;
+    opacity: 0;
+}
+
+/* 左右按钮容器 */
+.bili-overlay-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 80px;
+    background: rgba(0, 0, 0, 0.35);
+    border: none;
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, background 0.2s ease;
+    z-index: 5;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    font-family: inherit;
+    padding: 0;
+    line-height: 1;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.bili-overlay-btn.left {
+    left: 0;
+    border-radius: 0 12px 12px 0;
+}
+
+.bili-overlay-btn.right {
+    right: 0;
+    border-radius: 12px 0 0 12px;
+}
+
+/* 激活状态 - 按钮浮现 */
+.bili-ext-overlay-nav.active .bili-overlay-btn {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.bili-overlay-btn:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.bili-overlay-btn:active:not(:disabled) {
+    background: rgba(0, 0, 0, 0.7);
+    transform: translateY(-50%) scale(0.95);
+}
+
+.bili-overlay-btn:disabled {
+    opacity: 0.2 !important;
+    cursor: not-allowed;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+/* 按钮内文字 */
+.bili-overlay-btn-label {
+    font-size: 10px;
+    margin-top: 2px;
+    opacity: 0.85;
+}
+
+/* 自动隐藏动画 */
+.bili-ext-overlay-nav.fade-out .bili-overlay-btn {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 移动端适配 */
+@media screen and (max-width: 768px) {
+    .bili-overlay-btn {
+        width: 38px;
+        height: 70px;
+        font-size: 16px;
     }
 }
