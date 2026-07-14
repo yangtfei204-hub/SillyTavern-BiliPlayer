@@ -181,7 +181,8 @@ function loadExtensionSettings() {
                 lastGroup: '',
                 lastBvid: '',
                 lastPos: null,
-                settings: { ...DEFAULT_SETTINGS }
+                settings: { ...DEFAULT_SETTINGS },
+                isActive: true  // ⭐ 新增：默认开启
             };
             if (context) {
                 context[MODULE_NAME] = saved;
@@ -195,6 +196,11 @@ function loadExtensionSettings() {
         state.currentBvid = saved.lastBvid || '';
         state.savedPos = saved.lastPos || null;
         state.settings = { ...DEFAULT_SETTINGS, ...(saved.settings || {}) };
+        
+        // ⭐ 新增：恢复开关状态（如果存档中有的话）
+        if (saved.hasOwnProperty('isActive')) {
+            state.isActive = saved.isActive;
+        }
 
         if (['cover', 'contain', 'repeat', '100% 100%'].includes(state.settings.borderImageMode)) {
             state.settings.borderImageFit = state.settings.borderImageMode;
@@ -205,6 +211,7 @@ function loadExtensionSettings() {
         console.warn("配置读取失败", e);
     }
 }
+
 
 function saveExtensionSettings() {
     let pos = null;
@@ -218,7 +225,8 @@ function saveExtensionSettings() {
         lastGroup: state.currentGroup,
         lastBvid: state.currentBvid,
         lastPos: pos,
-        settings: state.settings
+        settings: state.settings,
+        isActive: state.isActive  // ⭐ 新增：保存开关状态
     };
 
     try {
@@ -237,6 +245,7 @@ function saveExtensionSettings() {
         }
     }
 }
+
 
 // 3. 主题应用
 function applyTheme() {
@@ -3830,7 +3839,6 @@ async function addVideo() {
     if (!state.currentBvid) loadVideo(defaultBox, finalBvid);
 }
 
-// ⭐ 新增：启动/关闭切换
 function togglePowerState() {
     if (state.isActive) {
         shutdownPlayer();
@@ -3838,7 +3846,9 @@ function togglePowerState() {
         startupPlayer();
     }
     updatePowerButton();
+    saveExtensionSettings();  // ⭐ 新增：切换时立即保存
 }
+
 
 function shutdownPlayer() {
     state.isActive = false;
@@ -3937,7 +3947,8 @@ function initExtension() {
             lastGroup: state.currentGroup,
             lastBvid: state.currentBvid,
             lastPos: state.savedPos,
-            settings: state.settings
+            settings: state.settings,
+            isActive: state.isActive  // ⭐ 新增
         };
         if (typeof window.saveSettingsDebounced === 'function') {
             window.saveSettingsDebounced();
@@ -3946,22 +3957,20 @@ function initExtension() {
         }
     }
 
-    // 🔧 根据设置决定启动方式
-    if (state.settings.startAsFloating) {
+    // ⭐ 新增：如果上次关闭时是关闭状态，创建面板但不显示
+    if (!state.isActive) {
+        createPanel();
+        panelElement.style.display = 'none';
+        // 不创建悬浮球，不加载视频
+        console.log('[BiliPlayer] 🔴 上次关闭时为关闭状态，保持关闭');
+    } else if (state.settings.startAsFloating) {
         // 悬浮球启动
         createPanel();
         panelElement.style.display = 'none';
         state.isFloating = true;
-        
-        // 🔧 不传参数，使用默认位置（桌面：左侧40px 顶部40%，移动：左侧15px 顶部40%）
         createFloatBadge();
         
-        // 如果有上次播放记录，静默加载
-        if (
-            state.currentGroup &&
-            state.currentBvid &&
-            state.playlistData[state.currentGroup]
-        ) {
+        if (state.currentGroup && state.currentBvid && state.playlistData[state.currentGroup]) {
             loadVideo(state.currentGroup, state.currentBvid);
         }
     } else {
@@ -3969,21 +3978,17 @@ function initExtension() {
         createPanel();
         renderGroups();
         
-        if (
-            state.currentGroup &&
-            state.currentBvid &&
-            state.playlistData[state.currentGroup]
-        ) {
+        if (state.currentGroup && state.currentBvid && state.playlistData[state.currentGroup]) {
             loadVideo(state.currentGroup, state.currentBvid);
         }
     }
 
-        let attempts = 0;
+    let attempts = 0;
     const injectInterval = setInterval(() => {
         attempts++;
         const extensionSettingsMenu = document.getElementById('extensions_settings');
         if (extensionSettingsMenu && !document.getElementById('bili-ext-nav-toggle')) {
-                        extensionSettingsMenu.insertAdjacentHTML('afterbegin', `
+            extensionSettingsMenu.insertAdjacentHTML('afterbegin', `
                 <div class="inline-drawer" id="bili-ext-nav-toggle" style="
                     margin-bottom: 10px;
                     padding: 12px 14px;
@@ -4040,10 +4045,9 @@ function initExtension() {
                 </div>
             `);
 
-
             const powerBtn = document.getElementById('bili-ext-power-btn');
             powerBtn.addEventListener('click', togglePowerState);
-            updatePowerButton();
+            updatePowerButton();  // ⭐ 这里会根据 state.isActive 正确显示按钮状态
         }
 
         try {
@@ -4064,8 +4068,8 @@ function initExtension() {
             clearInterval(injectInterval);
         }
     }, 1000);
-
 }
+
 
 
 
